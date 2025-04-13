@@ -1,0 +1,23 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ service_name }} - Mr. Helper{% endblock %}
+
+{% block content %}
+<h2>Businesses Offering {{ service_name }}</h2>
+
+{% if businesses %}
+    <ul>
+        {% for business in businesses %}
+            <li>
+                <a href="{{ url_for('profile', username=business.username) }}">
+                    <strong>{{ business.username }}</strong> - {{ business.location }}
+                </a>
+            </li>
+        {% endfor %}
+    </ul>
+{% else %}
+    <p>No businesses are offering {{ service_name }} at the moment.</p>
+{% endif %}
+
+<a href="{{ url_for('home') }}">Back to Home</a>
+{% endblock %}

@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Edit Profile</title>
+</head>
+<body>
+    <h2>Edit Your Profile</h2>
+    <form method="POST">
+        <label>Bio:</label><br>
+        <textarea name="bio">{{ user['bio'] }}</textarea><br><br>
+        
+        <label>Price:</label><br>
+        <input type="number" name="price" value="{{ user['rating'] }}"><br><br>
+
+        <input type="submit" value="Save Changes">
+    </form>
+</body>
+</html>

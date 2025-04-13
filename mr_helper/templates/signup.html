@@ -1,0 +1,8 @@
+{% extends 'base.html' %}
+{% block title %}Signup - Mr. Helper{% endblock %}
+{% block content %}
+<h2>Signup</h2>
+<p>Select account type:</p>
+<a href="{{ url_for('signup_business') }}"><button>For Business</button></a>
+<a href="{{ url_for('signup_user') }}"><button>For User</button></a>
+{% endblock %}
