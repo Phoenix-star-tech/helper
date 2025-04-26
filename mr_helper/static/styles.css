@@ -154,23 +154,22 @@ ul li {
 }
 .suggestions-box {
     position: absolute;
-    top: 40px;
-    background: white;
+    top: 100%;
+    width: 100%;
+    background-color: white;
     border: 1px solid #ccc;
-    border-radius: 10px;
-    width: 83%;
     max-height: 200px;
     overflow-y: auto;
-    z-index: 10;
+    z-index: 1000;
   }
   .suggestion-item {
-    padding: 8px;
+    padding: 5px;
     cursor: pointer;
   }
   .suggestion-item:hover {
     background-color: #f0f0f0;
   }
-
+  
   #imageInput {
     display: none;
   }
@@ -186,3 +185,31 @@ ul li {
     font-size: 14px;
     margin-top: 5px;
   }
+
+  .notification-buttons {
+    margin-top: 10px;
+}
+
+.notification-buttons button {
+    margin-right: 5px;
+    padding: 6px 12px;
+    border-radius: 8px;
+    border: none;
+    cursor: pointer;
+    font-weight: bold;
+}
+
+.btn-view {
+    background-color: #6c63ff;
+    color: white;
+}
+
+.btn-accept {
+    background-color: #4CAF50;
+    color: white;
+}
+
+.btn-reject {
+    background-color: #f44336;
+    color: white;
+}

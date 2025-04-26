@@ -1,5 +1,6 @@
-{% extends 'base.html' %} {% block title %}Home - Mr. Helper{% endblock %} {%
-block content %}
+{% extends 'base.html' %}
+{% block title %}Home - Mr. Helper{% endblock %}
+{% block content %}
 <h2>Welcome to Mr. Helper</h2>
 
 <div class="search-container">
@@ -21,6 +22,9 @@ block content %}
   </form>
 </div>
 
+<!-- Order Services Button -->
+<a href="{{ url_for('order', service='default_service') }}" class="btn btn-success">🛒 Order Services</a>
+
 <h3>Available Services:</h3>
 <ul>
   {% for service in services %}
@@ -32,6 +36,7 @@ block content %}
     </li>
   {% endfor %}
 </ul>
+
 <script>
   const searchBox = document.getElementById("search-box");
   const suggestionsBox = document.getElementById("search-suggestions");
