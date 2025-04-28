@@ -37,8 +37,7 @@
   {% else %}
     <p class="card-text"><strong>Rating:</strong> No ratings yet</p>
   {% endif %}
-{% endif %}
-
+  
 {% if session['username'] != user.username %}
   <h4>Rate & Comment</h4>
   {% if not has_rated %}
