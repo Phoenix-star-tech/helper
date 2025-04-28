@@ -1,158 +1,136 @@
 {% extends 'base.html' %}
 {% block title %}Profile - Mr. Helper{% endblock %}
 {% block content %}
-
-<div class="container mt-4">
-  <div class="card p-4">
-    <div class="text-center">
+<div class="profile-container">
+  <div class="profile-header">
+    <div class="profile-picture">
       {% if user.profile_pic %}
-        <img src="{{ url_for('static', filename='uploads/' + user.profile_pic) }}" class="rounded-circle mb-3" alt="Profile Picture" width="120" height="120" />
+        <img src="{{ url_for('static', filename='uploads/' + user.profile_pic) }}" alt="Profile Picture" />
       {% else %}
-        <img src="{{ url_for('static', filename='default_profile.png') }}" class="rounded-circle mb-3" alt="Default Profile Picture" width="120" height="120" />
+        <img src="{{ url_for('static', filename='default_profile.png') }}" alt="Default Profile Picture" />
       {% endif %}
-      <h3>{{ user.username }}</h3>
-      <p><i class="fas fa-phone"></i> {{ user.phone }}</p>
     </div>
-
-    {% if user.account_type == 'business' %}
-      <hr>
-      <p><i class="fas fa-briefcase"></i> Business Type: <strong>{{ user.business_type }}</strong></p>
-      <p><i class="fas fa-map-marker-alt"></i> Location: <strong>{{ user.location }}</strong></p>
-      <p><i class="fas fa-info-circle"></i> Bio: {{ user.bio }}</p>
-      <p><i class="fas fa-dollar-sign"></i> Price: <strong>{{ user.price if user.price else 'Not provided' }}</strong></p>
-
-      {% if session['username'] == user.username %}
-        <div class="text-center my-3">
-          <a href="{{ url_for('edit_profile') }}" class="btn btn-primary"><i class="fas fa-edit"></i> Edit Profile</a>
-        </div>
+    <div class="profile-info">
+      <h2>{{ user.username }}</h2>
+      <p>📞 {{ user.phone }}</p>
+      {% if user.account_type == 'business' %}
+        <p>🏢 {{ user.business_type }}</p>
+        <p>📍 {{ user.location }}</p>
+        <p>📝 {{ user.bio }}</p>
+        <p>💵 {{ user.price if user.price else 'Not provided' }}</p>
       {% endif %}
+    </div>
+    {% if session['username'] == user.username %}
+      <a href="{{ url_for('edit_profile') }}" class="btn edit-btn">Edit Profile</a>
     {% endif %}
+  </div>
 
-    <hr>
-
-    <!-- Average Rating -->
+  <div class="ratings-summary">
     {% set total_rating = 0 %}
     {% set rating_count = 0 %}
     {% for fb in feedback %}
       {% set total_rating = total_rating + fb['rating'] %}
       {% set rating_count = rating_count + 1 %}
     {% endfor %}
-
+    
     {% if rating_count > 0 %}
-      <p><i class="fas fa-star text-warning"></i> Average Rating: <strong>{{ (total_rating / rating_count)|round(1) }}/5</strong> ({{ rating_count }} ratings)</p>
+      <p>⭐ Average Rating: <strong>{{ (total_rating / rating_count)|round(1) }}/5</strong> ({{ rating_count }} reviews)</p>
     {% else %}
-      <p><i class="fas fa-star"></i> No ratings yet</p>
+      <p>No ratings yet</p>
     {% endif %}
   </div>
 
-  <!-- Rating and Comment Form -->
   {% if session['username'] != user.username %}
-    <div class="card mt-4 p-4">
-      <h4>Rate & Comment</h4>
+    <div class="rating-section">
+      <h3>Rate & Comment</h3>
       {% if not has_rated %}
         <form method="POST" action="{{ url_for('rate_comment', username=user.username) }}">
-          <div class="mb-3">
-            <label class="form-label">Your Rating:</label>
-            <div class="rating">
-              {% for i in range(5, 0, -1) %}
-                <input type="radio" id="star{{ i }}" name="rating" value="{{ i }}" required />
-                <label for="star{{ i }}">★</label>
-              {% endfor %}
-            </div>
+          <div class="star-rating">
+            {% for i in range(5, 0, -1) %}
+              <input type="radio" id="star{{ i }}" name="rating" value="{{ i }}" required />
+              <label for="star{{ i }}">★</label>
+            {% endfor %}
           </div>
-          <div class="mb-3">
-            <textarea name="comment" class="form-control" placeholder="Leave a comment..." required></textarea>
-          </div>
-          <button type="submit" class="btn btn-success">Submit</button>
+          <textarea name="comment" placeholder="Leave a comment..." required></textarea>
+          <button type="submit" class="btn">Submit</button>
         </form>
       {% else %}
-        <p class="text-warning">You already rated this user.</p>
+        <p>You already rated this user.</p>
         <form method="POST" action="{{ url_for('delete_rating', username=user.username) }}">
-          <button type="submit" class="btn btn-danger">Delete Rating</button>
+          <button type="submit" class="btn delete-btn">Delete Rating</button>
         </form>
       {% endif %}
     </div>
   {% endif %}
 
-  <!-- Feedback Section -->
-  <div class="card mt-4 p-4">
+  <div class="feedback-section">
     <h3>Feedback</h3>
     {% for fb in feedback %}
-      <div class="border rounded p-3 mb-3">
-        <p><strong>{{ fb['from_user'] }}</strong> rated <span class="text-warning">{{ fb['rating'] }}/5</span></p>
+      <div class="feedback-card">
+        <p><strong>{{ fb['from_user'] }}</strong> rated {{ fb['rating'] }}/5</p>
         <p>{{ fb['comment'] }}</p>
         {% if fb['reply'] %}
-          <div class="alert alert-info p-2 mt-2"><em>Reply:</em> {{ fb['reply'] }}</div>
+          <p class="reply">Reply: {{ fb['reply'] }}</p>
         {% endif %}
       </div>
     {% endfor %}
   </div>
 
-  <!-- Report Section -->
   {% if session['username'] != user.username and not is_admin %}
-    <div class="card mt-4 p-4">
-      <h3>Report this Profile</h3>
+    <div class="report-section">
+      <h3>Report Profile</h3>
       <form method="POST" action="{{ url_for('report', username=user.username) }}">
-        <div class="mb-3">
-          <textarea name="reason" class="form-control" placeholder="Why are you reporting this profile?" required></textarea>
-        </div>
-        <button type="submit" class="btn btn-danger"><i class="fas fa-flag"></i> Report</button>
+        <textarea name="reason" placeholder="Reason for reporting..." required></textarea>
+        <button type="submit" class="btn report-btn">Report</button>
       </form>
     </div>
   {% endif %}
 
-  <!-- Orders and Notifications -->
   {% if session['username'] == user.username %}
-    <div class="card mt-4 p-4">
-      <h3>🛒 Past Orders</h3>
+    <div class="orders-section">
+      <h3>Past Orders</h3>
       {% if orders %}
         {% for o in orders %}
-          <p>📝 <strong>{{ o['service'] }}</strong> in <em>{{ o['location'] }}</em> — <small>{{ o['timestamp'] }}</small></p>
+          <p>📝 {{ o['service'] }} in {{ o['location'] }} — {{ o['timestamp'] }}</p>
         {% endfor %}
       {% else %}
         <p>No orders placed yet.</p>
       {% endif %}
     </div>
 
-    <div class="card mt-4 p-4">
-      <h3>🔔 Notifications</h3>
+    <div class="notifications-section">
+      <h3>Notifications</h3>
       {% if notifications %}
         {% for note in notifications %}
-          <div class="border rounded p-3 mb-3">
+          <div class="notification-card">
             <p><strong>{{ note['user'] }}</strong> ordered <strong>{{ note['service'] }}</strong> at <strong>{{ note['location'] }}</strong></p>
             <p>{{ note['message'] }}</p>
             {% if note['image'] %}
-              <img src="{{ url_for('static', filename='uploads/' + note['image']) }}" class="img-fluid mb-2" width="120" />
+              <img src="{{ url_for('static', filename='uploads/' + note['image']) }}" />
             {% endif %}
-            <small>{{ note['timestamp'] }}</small><br>
-            {% if session['username'] == note['user'] %}
-              {% if not note['provider_accepted'] %}
-                <p class="badge bg-warning text-dark">Waiting for provider to accept</p>
-              {% else %}
-                <p class="badge bg-success">Order accepted</p>
-              {% endif %}
-            {% else %}
+            <p class="timestamp">{{ note['timestamp'] }}</p>
+
+            {% if session['username'] != note['user'] %}
               {% if not note['provider_accepted'] %}
                 <form method="POST" action="{{ url_for('order', service=service_name) }}">
                   <input type="hidden" name="order_id" value="{{ note['order_id'] }}" />
-                  <button type="submit" class="btn btn-success btn-sm">Accept Request</button>
+                  <button type="submit" class="btn accept-btn">Accept Request</button>
                 </form>
               {% else %}
-                <span class="badge bg-success">Accepted</span>
+                <p class="accepted">Accepted ✅</p>
               {% endif %}
             {% endif %}
           </div>
         {% endfor %}
       {% else %}
-        <p>No new notifications.</p>
+        <p>No notifications.</p>
       {% endif %}
     </div>
   {% endif %}
 
-  <!-- Reports for Admin -->
   {% if reports %}
-    <div class="alert alert-danger mt-4">
-      ⚠️ This user has been reported:
+    <div class="report-warning">
+      <p>⚠️ This user has been reported:</p>
       <ul>
         {% for report in reports %}
           <li>{{ report.reason }}</li>
@@ -160,39 +138,126 @@
       </ul>
     </div>
   {% else %}
-    <div class="alert alert-success mt-4">
-      ✅ No reports found.
+    <div class="no-reports">
+      <p>✅ No reports found.</p>
     </div>
   {% endif %}
 
-  <!-- Logout -->
   {% if session['username'] == user.username %}
-    <div class="text-center mt-4">
-      <a href="{{ url_for('logout') }}" class="btn btn-outline-danger"><i class="fas fa-sign-out-alt"></i> Logout</a>
-    </div>
+    <a href="{{ url_for('logout') }}" class="btn logout-btn">Logout</a>
   {% endif %}
 </div>
 
-<!-- Styles for rating stars -->
+<!-- Styling -->
 <style>
-.rating {
-  display: flex;
-  flex-direction: row-reverse;
-  justify-content: center;
+.profile-container {
+  max-width: 900px;
+  margin: auto;
+  padding: 2rem;
 }
-.rating input {
+.profile-header {
+  display: flex;
+  align-items: center;
+  gap: 2rem;
+  margin-bottom: 2rem;
+}
+.profile-picture img {
+  width: 120px;
+  height: 120px;
+  object-fit: cover;
+  border-radius: 50%;
+  border: 3px solid #4f46e5;
+}
+.profile-info h2 {
+  margin: 0;
+}
+.btn {
+  background-color: #4f46e5;
+  color: white;
+  padding: 10px 20px;
+  margin-top: 1rem;
+  display: inline-block;
+  text-decoration: none;
+  border-radius: 10px;
+}
+.edit-btn {
+  background-color: #10b981;
+}
+.delete-btn {
+  background-color: #f59e0b;
+}
+.report-btn {
+  background-color: #ef4444;
+}
+.accept-btn {
+  background-color: #10b981;
+}
+.logout-btn {
+  background-color: #ef4444;
+  width: 100%;
+  text-align: center;
+}
+.ratings-summary,
+.rating-section,
+.feedback-section,
+.report-section,
+.orders-section,
+.notifications-section,
+.report-warning,
+.no-reports {
+  margin-bottom: 2rem;
+}
+.feedback-card,
+.notification-card {
+  background-color: #f9fafb;
+  border: 1px solid #e5e7eb;
+  padding: 1rem;
+  border-radius: 10px;
+  margin-top: 1rem;
+}
+.notification-card img {
+  width: 100px;
+  height: 100px;
+  object-fit: cover;
+  margin-top: 1rem;
+}
+.star-rating input[type="radio"] {
   display: none;
 }
-.rating label {
-  font-size: 2rem;
-  color: #ddd;
+.star-rating label {
+  font-size: 30px;
+  color: #ccc;
   cursor: pointer;
 }
-.rating input:checked ~ label,
-.rating label:hover,
-.rating label:hover ~ label {
+.star-rating input[type="radio"]:checked ~ label,
+.star-rating label:hover,
+.star-rating label:hover ~ label {
   color: gold;
 }
+textarea {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  margin-top: 10px;
+}
+.timestamp {
+  font-size: 0.8rem;
+  color: gray;
+}
+.reply {
+  font-style: italic;
+  color: #6b7280;
+}
+@media (max-width: 768px) {
+  .profile-header {
+    flex-direction: column;
+    text-align: center;
+  }
+  .profile-picture img {
+    width: 100px;
+    height: 100px;
+  }
+}
 </style>
-
 {% endblock %}
