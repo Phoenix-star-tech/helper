@@ -24,6 +24,21 @@
   {% endif %}
 {% endif %}
 
+  <!-- Calculate average rating -->
+  {% set total_rating = 0 %}
+  {% set rating_count = 0 %}
+  {% for fb in feedback %}
+    {% set total_rating = total_rating + fb['rating'] %}
+    {% set rating_count = rating_count + 1 %}
+  {% endfor %}
+  
+  {% if rating_count > 0 %}
+    <p class="card-text"><strong>Rating:</strong> {{ (total_rating / rating_count)|round(1) }}/5 ({{ rating_count }} ratings)</p>
+  {% else %}
+    <p class="card-text"><strong>Rating:</strong> No ratings yet</p>
+  {% endif %}
+{% endif %}
+
 {% if session['username'] != user.username %}
   <h4>Rate & Comment</h4>
   {% if not has_rated %}
