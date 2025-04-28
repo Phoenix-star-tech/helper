@@ -431,7 +431,9 @@ def order(service):
         flash('Order placed successfully!', 'success')
         return redirect(url_for('home'))
 
-    return render_template('order.html', service=service, services=services, locations=locations)
+    # return render_template('order.html', service=service, services=services, locations=locations)
+    return render_template('profile.html', service_id=service_id, other_variables=other_values)
+
 
 @app.route('/order_status/<int:order_id>', methods=['GET', 'POST'])
 def order_status(order_id):

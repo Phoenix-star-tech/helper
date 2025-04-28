@@ -96,7 +96,7 @@
         {% endif %}
         {% if session['username'] != note['user'] %}
           {% if not note['provider_accepted'] %}
-            <form method="POST" action="{{ url_for('order') }}">
+          <form method="POST" action="{{ url_for('order', service=service_id) }}">
               <input type="hidden" name="order_id" value="{{ note['order_id'] }}" />
               <button type="submit" class="btn btn-success">Accept Request</button>
             </form>
