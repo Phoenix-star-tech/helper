@@ -3,7 +3,7 @@
 {% block title %}Place Order - Mr. Helper{% endblock %}
 
 {% block content %}
-<h2>Place a Service Order</h2>
+<h2>Place Service Order</h2>
 
 <form method="POST" enctype="multipart/form-data">
   <label>Your Name:</label>
@@ -11,9 +11,9 @@
 
   <label>Service:</label>
   <select name="service" required>
-    <option value="" disabled selected>Select a service</option>
+    <option value="" disabled {% if not service_name %}selected{% endif %}>Select a service</option>
     {% for s in services %}
-      <option value="{{ s['service_name'] }}">{{ s['service_name'] }}</option>
+      <option value="{{ s['service_name'] }}" {% if service_name == s['service_name'] %}selected{% endif %}>{{ s['service_name'] }}</option>
     {% endfor %}
   </select><br><br>
 
@@ -25,11 +25,11 @@
     {% endfor %}
   </select><br><br>
 
-  <label>Upload Image:</label>
+  <label>Upload Image (Optional):</label>
   <input type="file" name="image"><br><br>
 
   <label>Message:</label><br>
-  <textarea name="message" rows="4" cols="40" placeholder="Describe your request..." required></textarea><br><br>
+  <textarea name="message" rows="4" cols="40" placeholder="Describe your request..."></textarea><br><br>
 
   <button type="submit">Submit Order</button>
 </form>

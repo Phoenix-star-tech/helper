@@ -26,19 +26,12 @@
   </div>
 
   <div class="ratings-summary">
-    {% set total_rating = 0 %}
-    {% set rating_count = 0 %}
-    {% for fb in feedback %}
-      {% set total_rating = total_rating + fb['rating'] %}
-      {% set rating_count = rating_count + 1 %}
-    {% endfor %}
-    
-    {% if rating_count > 0 %}
-      <p>⭐ Average Rating: <strong>{{ (total_rating / rating_count)|round(1) }}/5</strong> ({{ rating_count }} reviews)</p>
+    {% if average_rating %}
+      <p>⭐ Average Rating: <strong>{{ average_rating }}/5</strong> ({{ feedback | length }} reviews)</p>
     {% else %}
       <p>No ratings yet</p>
     {% endif %}
-  </div>
+  </div>  
 
   {% if session['username'] != user.username %}
     <div class="rating-section">
@@ -83,48 +76,6 @@
         <textarea name="reason" placeholder="Reason for reporting..." required></textarea>
         <button type="submit" class="btn report-btn">Report</button>
       </form>
-    </div>
-  {% endif %}
-
-  {% if session['username'] == user.username %}
-    <div class="orders-section">
-      <h3>Past Orders</h3>
-      {% if orders %}
-        {% for o in orders %}
-          <p>📝 {{ o['service'] }} in {{ o['location'] }} — {{ o['timestamp'] }}</p>
-        {% endfor %}
-      {% else %}
-        <p>No orders placed yet.</p>
-      {% endif %}
-    </div>
-
-    <div class="notifications-section">
-      <h3>Notifications</h3>
-      {% if notifications %}
-        {% for note in notifications %}
-          <div class="notification-card">
-            <p><strong>{{ note['user'] }}</strong> ordered <strong>{{ note['service'] }}</strong> at <strong>{{ note['location'] }}</strong></p>
-            <p>{{ note['message'] }}</p>
-            {% if note['image'] %}
-              <img src="{{ url_for('static', filename='uploads/' + note['image']) }}" />
-            {% endif %}
-            <p class="timestamp">{{ note['timestamp'] }}</p>
-
-            {% if session['username'] != note['user'] %}
-              {% if not note['provider_accepted'] %}
-                <form method="POST" action="{{ url_for('order', service=service_name) }}">
-                  <input type="hidden" name="order_id" value="{{ note['order_id'] }}" />
-                  <button type="submit" class="btn accept-btn">Accept Request</button>
-                </form>
-              {% else %}
-                <p class="accepted">Accepted ✅</p>
-              {% endif %}
-            {% endif %}
-          </div>
-        {% endfor %}
-      {% else %}
-        <p>No notifications.</p>
-      {% endif %}
     </div>
   {% endif %}
 

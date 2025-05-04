@@ -156,7 +156,7 @@ def home():
         'Bathroom Cleaning': 'bathroom_cleaning.jpg',
         'Room Cleaning': 'house_cleaning.jpg',
         'Plumbing': 'plumbing.jpg',
-        'Motor Repair': 'house_cleaning.png',
+        'Motor Repair': 'Moter_Repair.jpg',
         'Electrician': 'electrician.jpg',
         'Two wheeler': 'two_wheeler.jpg',
         'Three wheeler': 'three_wheeler.jpg',
@@ -325,32 +325,40 @@ def profile(username=None):
         cursor.execute("SELECT * FROM users WHERE username = %s", (username,))
         user = cursor.fetchone()
 
-        # Feedback
+        if not user:
+            flash("User not found.")
+            return redirect(url_for('home'))
+
+        # Feedback for average rating
         cursor.execute("SELECT * FROM feedback WHERE to_user = %s", (username,))
         feedback = cursor.fetchall()
+
+        # Rating calculations
+        total_rating = sum([fb['rating'] for fb in feedback])
+        rating_count = len(feedback)
+        average_rating = round(total_rating / rating_count, 1) if rating_count > 0 else None
+
+        # Check if the current user already rated
+        has_rated = False
+        if 'username' in session and session['username'] != username:
+            cursor.execute("SELECT 1 FROM feedback WHERE to_user = %s AND from_user = %s", (username, session['username']))
+            has_rated = cursor.fetchone() is not None
 
         # Reports
         cursor.execute("SELECT * FROM reports WHERE reported_user = %s", (username,))
         reports = cursor.fetchall()
 
-        # Past Orders
-        cursor.execute("SELECT * FROM orders WHERE provider = %s", (username,))
-        past_orders = cursor.fetchall()
-
-        # Notifications
-        cursor.execute("SELECT * FROM notifications WHERE to_user = %s ORDER BY id DESC", (username,))
-        notifications = cursor.fetchall()
-
-        # Is owner/admin?
+        # Ownership and admin check
         is_owner = session.get('username') == username
         is_admin = session.get('username') == 'adime'
 
     return render_template('profile.html',
                            user=user,
                            feedback=feedback,
+                           average_rating=average_rating,
+                           rating_count=rating_count,
+                           has_rated=has_rated,
                            reports=reports,
-                           past_orders=past_orders,
-                           notifications=notifications,
                            is_owner=is_owner,
                            is_admin=is_admin)
 
@@ -398,15 +406,10 @@ def order(service):
 
     username = session['username']
 
-    # Fetch all registered services and locations
     with get_db_connection() as conn:
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        
-        # Fetch all registered services (filtered by status)
         cursor.execute("SELECT service_name FROM services WHERE status = 'registered'")
         services = cursor.fetchall()
-
-        # Fetch all registered locations (filtered by status)
         cursor.execute("SELECT location_name FROM locations WHERE status = 'registered'")
         locations = cursor.fetchall()
 
@@ -421,23 +424,41 @@ def order(service):
             image_file.save(os.path.join(app.config['UPLOAD_FOLDER'], image_filename))
 
         with get_db_connection() as conn:
-            cursor = conn.cursor()
+            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+            # Insert the order
             cursor.execute("""
                 INSERT INTO orders ("user", service, location, image, message)
                 VALUES (%s, %s, %s, %s, %s)
+                RETURNING id
             """, (username, service, location, image_filename, message))
+            order_id = cursor.fetchone()['id']
+
+            # Get business providers who offer this service in this location
+            cursor.execute("""
+                SELECT username
+                FROM users
+                WHERE account_type = 'business' AND business_type = %s AND location = %s
+            """, (service, location))
+
+            providers = cursor.fetchall()
+
+            # Create a notification for each provider
+            for provider in providers:
+                cursor.execute("""
+                    INSERT INTO notifications (sender, receiver, order_id, message, status)
+                    VALUES (%s, %s, %s, %s, %s)
+                """, (username, provider['username'], order_id, 'Waiting for acceptance from service', 'waiting'))
+
             conn.commit()
 
-        flash('Order placed successfully!', 'success')
+        flash('Order placed successfully and sent to relevant service providers!', 'success')
         return redirect(url_for('home'))
 
-    # return render_template('order.html', service=service, services=services, locations=locations)
-    # return render_template('profile.html', service_id=service_id, other_variables=other_values)
-    return render_template('profile.html', service_name=service_name, services=services, locations=locations)
+    return render_template('order.html', service_name=service, services=services, locations=locations)
 
-
-@app.route('/order_status/<int:order_id>', methods=['GET', 'POST'])
-def order_status(order_id):
+@app.route('/approve_order/<int:order_id>/<provider>', methods=['POST'])
+def approve_order(order_id, provider):
     if 'username' not in session:
         return redirect(url_for('login'))
 
@@ -445,17 +466,35 @@ def order_status(order_id):
 
     with get_db_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM orders WHERE id=%s", (order_id,))
-        order = cursor.fetchone()
 
-        if order['user'] != username:
-            flash("You do not have permission to view this order.", "danger")
-            return redirect(url_for('home'))
+        # Approve selected provider
+        cursor.execute("""
+            UPDATE notifications
+            SET status = 'approved_by_user', message = 'Order approved'
+            WHERE order_id = %s AND receiver = %s
+        """, (order_id, provider))
 
-    return render_template('order.html', order=order)
+        # Reject all other providers
+        cursor.execute("""
+            UPDATE notifications
+            SET status = 'rejected_by_user', message = 'Order rejected'
+            WHERE order_id = %s AND receiver != %s AND sender = %s AND status = 'accepted_by_provider'
+        """, (order_id, provider, username))
+        
+        # Update order table with provider information
+        cursor.execute("""
+            UPDATE orders
+            SET provider = %s, provider_accepted = TRUE, user_accepted = TRUE
+            WHERE id = %s
+        """, (provider, order_id))
 
+        conn.commit()
+
+    flash(f'You approved the provider: {provider}', 'success')
+    return redirect(url_for('notifications'))  # Fixed: was 'notification' (singular)
+    
 @app.route('/notifications')
-def notifications():
+def show_notifications():
     if 'username' not in session:
         return redirect(url_for('login'))
 
@@ -465,12 +504,13 @@ def notifications():
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cursor.execute("""
             SELECT * FROM notifications
-            WHERE to_user=%s
+            WHERE receiver = %s
+            ORDER BY id DESC
         """, (username,))
         notifications = cursor.fetchall()
+        print("User's notifications:", notifications)
 
-    return render_template('notifications.html', notifications=notifications)
-
+    return render_template('notification.html', notifications=notifications)
 
 @app.route('/report/<username>', methods=['GET', 'POST'])
 def report(username):
@@ -536,50 +576,49 @@ def service(service_name):
 @app.route('/rate_comment/<username>', methods=['POST'])
 def rate_comment(username):
     if 'username' not in session:
-        flash("You need to log in first!", "warning")
         return redirect(url_for('login'))
-    
-    # Check if the user is trying to rate their own profile
-    if session['username'] == username:
-        flash("You cannot rate your own profile!", "danger")
-        return redirect(url_for('profile', username=username))
-    
-    # Retrieve the rating and comment from the form
-    rating = request.form['rating']
+
+    rating = int(request.form['rating'])
     comment = request.form['comment']
-    
-    try:
-        # Database connection
-        conn = psycopg2.connect(DATABASE_URL, sslmode='require')
-        cur = conn.cursor()
+    from_user = session['username']
 
-        # Check if the user has already rated this profile
-        cur.execute("SELECT * FROM feedback WHERE from_user = %s AND to_user = %s", (session['username'], username))
-        existing_feedback = cur.fetchone()
+    conn = get_db_connection()
+    cur = conn.cursor()
 
-        if existing_feedback:
-            # If the user has already rated this profile, update the rating and comment
-            cur.execute("""
-                UPDATE feedback
-                SET rating = %s, comment = %s
-                WHERE from_user = %s AND to_user = %s
-            """, (rating, comment, session['username'], username))
-        else:
-            # If no existing feedback, insert a new rating and comment
-            cur.execute("""
-                INSERT INTO feedback (from_user, to_user, rating, comment)
-                VALUES (%s, %s, %s, %s)
-            """, (session['username'], username, rating, comment))
-
-        conn.commit()
-        cur.close()
+    # Prevent multiple ratings
+    cur.execute("SELECT * FROM feedback WHERE to_user = %s AND from_user = %s", (username, from_user))
+    if cur.fetchone():
         conn.close()
+        flash("You have already rated this user.")
+        return redirect(url_for('profile', username=username))
 
-        flash("Your rating and comment have been submitted!", "success")
-    except Exception as e:
-        print(f"Error: {e}")
-        flash("Something went wrong. Please try again later.", "danger")
+    # Insert feedback
+    cur.execute(
+        "INSERT INTO feedback (to_user, from_user, rating, comment) VALUES (%s, %s, %s, %s)",
+        (username, from_user, rating, comment)
+    )
 
+    conn.commit()
+    conn.close()
+
+    flash("Rating submitted successfully.")
+    return redirect(url_for('profile', username=username))
+
+@app.route('/delete_rating/<username>', methods=['POST'])
+def delete_rating(username):
+    if 'username' not in session:
+        return redirect(url_for('login'))
+
+    current_user = session['username']
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    cur.execute("DELETE FROM feedback WHERE to_user = %s AND from_user = %s", (username, current_user))
+    conn.commit()
+    conn.close()
+
+    flash("Your rating was deleted.")
     return redirect(url_for('profile', username=username))
 
 @app.route('/logout')

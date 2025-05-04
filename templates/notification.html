@@ -1,0 +1,238 @@
+{% extends 'base.html' %}
+
+{% block title %}Notifications - Mr. Helper{% endblock %}
+
+{% block content %}
+<h2>Notifications</h2>
+
+<!-- Flash Messages -->
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+    {% for category, message in messages %}
+      <div class="alert alert-{{ category }}">{{ message }}</div>
+    {% endfor %}
+  {% endif %}
+{% endwith %}
+
+<!-- Tabs for different notification types -->
+<div class="tabs">
+  <button class="tab-btn active" onclick="openTab(event, 'received')">Received Notifications</button>
+  <button class="tab-btn" onclick="openTab(event, 'sent')">Sent Notifications</button>
+</div>
+
+<!-- Received Notifications Tab -->
+<div id="received" class="tab-content" style="display: block;">
+  <h3>Notifications You've Received</h3>
+  {% if received_notifications %}
+    <table class="notification-table">
+      <thead>
+        <tr>
+          <th>From</th>
+          <th>Message</th>
+          <th>Status</th>
+          <th>Order ID</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for notification in received_notifications %}
+        <tr>
+          <td>{{ notification.sender }}</td>
+          <td>{{ notification.message }}</td>
+          <td>{{ notification.status }}</td>
+          <td>{{ notification.order_id }}</td>
+          <td>
+            {% if notification.status == 'waiting' and session.get('account_type') == 'business' %}
+              <form action="{{ url_for('accept_order', order_id=notification.order_id) }}" method="POST">
+                <button type="submit">Accept Order</button>
+              </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p>You haven't received any notifications.</p>
+  {% endif %}
+</div>
+
+<!-- Sent Notifications Tab -->
+<div id="sent" class="tab-content" style="display: none;">
+  <h3>Notifications You've Sent</h3>
+  {% if sent_notifications %}
+    <table class="notification-table">
+      <thead>
+        <tr>
+          <th>To</th>
+          <th>Message</th>
+          <th>Status</th>
+          <th>Order ID</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for notification in sent_notifications %}
+        <tr>
+          <td>{{ notification.receiver }}</td>
+          <td>{{ notification.message }}</td>
+          <td>{{ notification.status }}</td>
+          <td>{{ notification.order_id }}</td>
+          <td>
+            {% if notification.status == 'accepted_by_provider' %}
+              <form action="{{ url_for('approve_order', order_id=notification.order_id, provider=notification.receiver) }}" method="POST">
+                <button type="submit">Approve Provider</button>
+              </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p>You haven't sent any notifications.</p>
+  {% endif %}
+</div>
+
+<!-- Original notifications display for backward compatibility -->
+<div id="all" class="tab-content" style="display: none;">
+  <h3>All Notifications</h3>
+  {% if notifications %}
+    <table class="notification-table">
+      <thead>
+        <tr>
+          <th>From</th>
+          <th>Message</th>
+          <th>Status</th>
+          <th>Order ID</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for notification in notifications %}
+        <tr>
+          <td>{{ notification.sender }}</td>
+          <td>{{ notification.message }}</td>
+          <td>{{ notification.status }}</td>
+          <td>{{ notification.order_id }}</td>
+          <td>
+            {% if notification.status == 'waiting' and session.get('account_type') == 'business' %}
+              <form action="{{ url_for('accept_order', order_id=notification.order_id) }}" method="POST">
+                <button type="submit">Accept Order</button>
+              </form>
+            {% endif %}
+            
+            {% if notification.status == 'accepted_by_provider' and session.get('username') == notification.sender %}
+              <form action="{{ url_for('approve_order', order_id=notification.order_id, provider=notification.receiver) }}" method="POST">
+                <button type="submit">Approve Provider</button>
+              </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p>You don't have any notifications at the moment.</p>
+  {% endif %}
+</div>
+
+<script>
+function openTab(evt, tabName) {
+  // Hide all tab content
+  var tabcontent = document.getElementsByClassName("tab-content");
+  for (var i = 0; i < tabcontent.length; i++) {
+    tabcontent[i].style.display = "none";
+  }
+  
+  // Remove "active" class from all tab buttons
+  var tablinks = document.getElementsByClassName("tab-btn");
+  for (var i = 0; i < tablinks.length; i++) {
+    tablinks[i].className = tablinks[i].className.replace(" active", "");
+  }
+  
+  // Show the current tab and add "active" class to the button
+  document.getElementById(tabName).style.display = "block";
+  evt.currentTarget.className += " active";
+}
+</script>
+
+<style>
+.tabs {
+  overflow: hidden;
+  border: 1px solid #ccc;
+  background-color: #f1f1f1;
+  margin-bottom: 20px;
+}
+
+.tab-btn {
+  background-color: inherit;
+  float: left;
+  border: none;
+  outline: none;
+  cursor: pointer;
+  padding: 14px 16px;
+  transition: 0.3s;
+}
+
+.tab-btn:hover {
+  background-color: #ddd;
+}
+
+.tab-btn.active {
+  background-color: #ccc;
+}
+
+.tab-content {
+  display: none;
+  padding: 6px 12px;
+  border: 1px solid #ccc;
+  border-top: none;
+}
+
+.notification-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.notification-table th, .notification-table td {
+  padding: 8px;
+  text-align: left;
+  border-bottom: 1px solid #ddd;
+}
+
+.notification-table tr:hover {
+  background-color: #f5f5f5;
+}
+
+.alert {
+  padding: 12px;
+  margin-bottom: 16px;
+  border-radius: 4px;
+}
+
+.alert-success {
+  background-color: #d4edda;
+  border-color: #c3e6cb;
+  color: #155724;
+}
+
+.alert-info {
+  background-color: #d1ecf1;
+  border-color: #bee5eb;
+  color: #0c5460;
+}
+
+.alert-warning {
+  background-color: #fff3cd;
+  border-color: #ffeeba;
+  color: #856404;
+}
+
+.alert-danger {
+  background-color: #f8d7da;
+  border-color: #f5c6cb;
+  color: #721c24;
+}
+</style>
+{% endblock %}
