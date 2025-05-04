@@ -1,0 +1,36 @@
+{% extends 'base.html' %}
+
+{% block title %}Place Order - Mr. Helper{% endblock %}
+
+{% block content %}
+<h2>Place Service Order</h2>
+
+<form method="POST" enctype="multipart/form-data">
+  <label>Your Name:</label>
+  <input type="text" value="{{ session['username'] }}" disabled><br><br>
+
+  <label>Service:</label>
+  <select name="service" required>
+    <option value="" disabled {% if not service_name %}selected{% endif %}>Select a service</option>
+    {% for s in services %}
+      <option value="{{ s['service_name'] }}" {% if service_name == s['service_name'] %}selected{% endif %}>{{ s['service_name'] }}</option>
+    {% endfor %}
+  </select><br><br>
+
+  <label>Location:</label>
+  <select name="location" required>
+    <option value="" disabled selected>Select a location</option>
+    {% for loc in locations %}
+      <option value="{{ loc['location_name'] }}">{{ loc['location_name'] }}</option>
+    {% endfor %}
+  </select><br><br>
+
+  <label>Upload Image (Optional):</label>
+  <input type="file" name="image"><br><br>
+
+  <label>Message:</label><br>
+  <textarea name="message" rows="4" cols="40" placeholder="Describe your request..."></textarea><br><br>
+
+  <button type="submit">Submit Order</button>
+</form>
+{% endblock %}

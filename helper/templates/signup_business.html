@@ -1,0 +1,70 @@
+{% extends 'base.html' %}
+
+{% block title %}Business Signup{% endblock %}
+
+{% block content %}
+<h2>Business Signup</h2>
+<form method="POST" enctype="multipart/form-data">
+    <label>Username:</label>
+    <input type="text" name="username" required>
+    
+    <label>Password:</label>
+    <input type="password" name="password" required>
+    
+    <label>Business Type:</label>
+    <select name="business_type">
+        <optgroup label="House">
+            <option>House Cleaning</option>
+            <option>Room Cleaning</option>
+            <option>Bathroom Cleaning</option>
+            <option>Kitchen Cleaning</option>
+        </optgroup>
+        <option>Plumbing</option>
+        <optgroup label="Electrician">
+            <option>Motor Repair</option>
+            <option>Electrician</option>
+        </optgroup>
+        <optgroup label="Vechile Repair">
+            <option>Two wheeler</option>
+            <option>Three wheeler</option>
+            <option>Four wheeler</option>
+            <option>Heavy Vechile</option>
+        </optgroup>
+    </select>
+    
+    <label>Phone Number:</label>
+    <input type="text" name="phone" required>
+    
+    <label>Location:</label>
+    <input type="text" name="location" required>
+    
+    <label>Bio:</label>
+    <textarea name="bio"></textarea>
+
+    <label for="price">Price:</label><br>
+    <input type="text" id="price" name="price" placeholder="Enter your price"><br><br>
+
+    
+    <label>Profile Picture:</label>
+    <input type="file" id="imageInput" accept="image/*" name="profile_pic" required>
+    <img id ="previewImage" src="#" alt="Image Preview" style="display:none; width: 100px; height: 100px;"/>
+    <button type="button" class="upload-btn" onclick="document.getElementById('imageInput').click();">upload pic</button>
+    <script>
+        document.getElementById("imageInput").addEventListener("change", function() {
+            let file = this.files[0];
+            if (file) {
+                let reader = new FileReader();
+                reader.onload = function(e) {
+                    let img = document.getElementById("previewImage");
+                    img.src = e.target.result;
+                    img.style.display = "block";
+                }
+                reader.readAsDataURL(file);
+            }
+        });
+    </script>
+    
+    
+    <button type="submit">Signup</button>
+</form>
+{% endblock %}
