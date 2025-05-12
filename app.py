@@ -399,118 +399,237 @@ def edit_profile():
 
     return render_template('edit_profile.html', user=user)
 
-@app.route('/order/<service>', methods=['GET', 'POST'])
-def order(service):
-    if 'username' not in session:
-        return redirect(url_for('login'))
-
-    username = session['username']
-
-    with get_db_connection() as conn:
-        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        cursor.execute("SELECT service_name FROM services WHERE status = 'registered'")
-        services = cursor.fetchall()
-        cursor.execute("SELECT location_name FROM locations WHERE status = 'registered'")
-        locations = cursor.fetchall()
-
+@app.route('/order', methods=['GET', 'POST'])
+def place_order():
     if request.method == 'POST':
+        service  = request.form['service']
         location = request.form['location']
-        message = request.form.get('message', '')
-        image_file = request.files.get('image')
-        image_filename = ''
+        message = request.form.get('message', 'No message provided')  # Default message if not provided
+        image    = request.files.get('image')
 
-        if image_file and allowed_file(image_file.filename):
-            image_filename = secure_filename(image_file.filename)
-            image_file.save(os.path.join(app.config['UPLOAD_FOLDER'], image_filename))
+        # Save image
+        image_path = None
+        if image and image.filename:
+            filename   = secure_filename(image.filename)
+            image_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            image.save(image_path)
 
-        with get_db_connection() as conn:
-            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        # Open a new DB connection
+        conn = get_db_connection()
+        cur  = conn.cursor()
 
-            # Insert the order
-            cursor.execute("""
-                INSERT INTO orders ("user", service, location, image, message)
-                VALUES (%s, %s, %s, %s, %s)
-                RETURNING id
-            """, (username, service, location, image_filename, message))
-            order_id = cursor.fetchone()['id']
+        # Insert order
+        cur.execute(""" 
+            INSERT INTO orders (owner_username, service, location, message)
+            VALUES (%s, (SELECT id FROM services WHERE service_name = %s), %s, %s)
+            RETURNING id
+        """, (session['username'], service, location, message))
+        order_id = cur.fetchone()[0]
 
-            # Get business providers who offer this service in this location
-            cursor.execute("""
-                SELECT username
-                FROM users
-                WHERE account_type = 'business' AND business_type = %s AND location = %s
-            """, (service, location))
-
-            providers = cursor.fetchall()
-
-            # Create a notification for each provider
-            for provider in providers:
-                cursor.execute("""
-                    INSERT INTO notifications (sender, receiver, order_id, message, status)
-                    VALUES (%s, %s, %s, %s, %s)
-                """, (username, provider['username'], order_id, 'Waiting for acceptance from service', 'waiting'))
-
-            conn.commit()
-
-        flash('Order placed successfully and sent to relevant service providers!', 'success')
-        return redirect(url_for('home'))
-
-    return render_template('order.html', service_name=service, services=services, locations=locations)
-
-@app.route('/approve_order/<int:order_id>/<provider>', methods=['POST'])
-def approve_order(order_id, provider):
-    if 'username' not in session:
-        return redirect(url_for('login'))
-
-    username = session['username']
-
-    with get_db_connection() as conn:
-        cursor = conn.cursor()
-
-        # Approve selected provider
-        cursor.execute("""
-            UPDATE notifications
-            SET status = 'approved_by_user', message = 'Order approved'
-            WHERE order_id = %s AND receiver = %s
-        """, (order_id, provider))
-
-        # Reject all other providers
-        cursor.execute("""
-            UPDATE notifications
-            SET status = 'rejected_by_user', message = 'Order rejected'
-            WHERE order_id = %s AND receiver != %s AND sender = %s AND status = 'accepted_by_provider'
-        """, (order_id, provider, username))
-        
-        # Update order table with provider information
-        cursor.execute("""
-            UPDATE orders
-            SET provider = %s, provider_accepted = TRUE, user_accepted = TRUE
-            WHERE id = %s
-        """, (provider, order_id))
+        # Notify matching providers
+        cur.execute(""" 
+            SELECT username 
+              FROM users 
+             WHERE business_type = %s 
+               AND location      = %s
+        """, (service, location))
+        for (provider,) in cur.fetchall():
+                link = url_for('order_accept', order_id=order_id)  # add this line
+                cur.execute(""" 
+                INSERT INTO notifications (to_user, from_user, order_id, message, link, created_at, is_read)
+                VALUES (%s, %s, %s, %s, %s, NOW(), false)
+                """, (provider, session['username'], order_id, message, link))
 
         conn.commit()
+        cur.close()
+        conn.close()
 
-    flash(f'You approved the provider: {provider}', 'success')
-    return redirect(url_for('notifications'))  # Fixed: was 'notification' (singular)
-    
+        flash("Order placed and providers notified.")
+        return redirect(url_for('home'))
+
+    # GET: show form
+    conn = get_db_connection()
+    cur  = conn.cursor(cursor_factory=RealDictCursor)  # Make sure to use RealDictCursor for dictionary format
+
+    cur.execute("SELECT service_name FROM services ORDER BY service_name")
+    services = cur.fetchall()  # Fetch all services as dictionary
+
+    cur.execute("SELECT location_name FROM locations ORDER BY location_name")
+    locations = cur.fetchall()  # Fetch all locations as dictionary
+
+    cur.close()
+    conn.close()
+
+    return render_template('order.html', services=services, locations=locations)
+
+@app.route('/approve_provider/<int:order_id>', methods=['POST'])
+def approve_provider(order_id):
+    selected_provider = request.form.get('selected_provider')
+    if not selected_provider:
+        flash("No provider selected.")
+        return redirect('/notifications')
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    # Step 1: Mark approved provider
+    cur.execute("""
+        UPDATE order_acceptance SET final_selected = TRUE 
+        WHERE order_id = %s AND provider_username = %s
+    """, (order_id, selected_provider))
+
+    # Step 2: Mark other providers as rejected
+    cur.execute("""
+        UPDATE order_acceptance SET accepted = FALSE 
+        WHERE order_id = %s AND provider_username != %s
+    """, (order_id, selected_provider))
+
+    # Step 3: Notify approved provider
+    cur.execute("""
+        INSERT INTO notifications (to_user, from_user, order_id, message, created_at, is_read)
+        VALUES (%s, %s, %s, %s, NOW(), FALSE)
+    """, (selected_provider, session['username'], order_id, f"You have been approved for Order {order_id}!"))
+
+    # Step 4: Notify rejected providers
+    cur.execute("""
+        SELECT provider_username FROM order_acceptance 
+        WHERE order_id = %s AND provider_username != %s
+    """, (order_id, selected_provider))
+    rejected = cur.fetchall()
+    for r in rejected:
+        cur.execute("""
+            INSERT INTO notifications (to_user, from_user, order_id, message, created_at, is_read)
+            VALUES (%s, %s, %s, %s, NOW(), FALSE)
+        """, (r[0], session['username'], order_id, f"Sorry, you were not selected for Order {order_id}."))
+
+    conn.commit()
+    cur.close()
+    conn.close()
+    flash("Provider selection finalized.")
+    return redirect('/home')
+
+@app.route('/order_accept/<int:order_id>', methods=['POST'])
+def order_accept(order_id):
+    provider = session['username']
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    # Accept the order
+    cur.execute("""
+        INSERT INTO order_acceptance (order_id, provider_username, accepted)
+        VALUES (%s, %s, TRUE)
+        ON CONFLICT (order_id, provider_username) DO NOTHING
+    """, (order_id, provider))
+
+    # Notify the owner
+    cur.execute("SELECT owner_username FROM orders WHERE id = %s", (order_id,))
+    owner = cur.fetchone()[0]
+    cur.execute("""
+        INSERT INTO notifications (to_user, from_user, order_id, message, created_at, is_read)
+        VALUES (%s, %s, %s, %s, NOW(), FALSE)
+    """, (owner, provider, order_id, f"{provider} accepted your order!"))
+
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    flash("You accepted the order!")
+    return redirect(url_for('notifications'))
+
+@app.route('/order_owners_view/<int:order_id>', methods=['GET', 'POST'])
+def view_accepted_providers(order_id):
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    if request.method == 'POST':
+        selected = request.form['selected_provider']
+        
+        # Mark selected provider
+        cur.execute("""
+            UPDATE order_acceptance 
+            SET final_selected = TRUE 
+            WHERE order_id = %s AND provider_username = %s
+        """, (order_id, selected))
+        
+        # Reject all others
+        cur.execute("""
+            UPDATE order_acceptance 
+            SET accepted = FALSE 
+            WHERE order_id = %s AND provider_username != %s
+        """, (order_id, selected))
+
+        # Notify selected provider
+        message = f"You have been approved for Order {order_id}!"
+        cur.execute("""
+            INSERT INTO notifications (to_user, from_user, order_id, message, created_at, is_read)
+            VALUES (%s, %s, %s, %s, NOW(), FALSE)
+        """, (selected, session['username'], order_id, message))
+
+        # Notify rejected providers
+        cur.execute("""
+            SELECT provider_username 
+            FROM order_acceptance 
+            WHERE order_id = %s AND provider_username != %s
+        """, (order_id, selected))
+        rejected_providers = [row[0] for row in cur.fetchall()]
+        
+        for rp in rejected_providers:
+            message = f"Sorry, you were not selected for Order {order_id}."
+            cur.execute("""
+                INSERT INTO notifications (to_user, from_user, order_id, message, created_at, is_read)
+                VALUES (%s, %s, %s, %s, NOW(), FALSE)
+            """, (rp, session['username'], order_id, message))
+
+        conn.commit()
+        cur.close()
+        conn.close()
+
+        flash("Provider selection finalized.")
+        return redirect('/home')
+
+    # You don't use the GET method since everything's handled in notification.html
+    return "Not Allowed", 405
+
 @app.route('/notifications')
-def show_notifications():
+def notifications():
     if 'username' not in session:
-        return redirect(url_for('login'))
+        return redirect('/login')
 
-    username = session['username']
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
 
-    with get_db_connection() as conn:
-        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        cursor.execute("""
-            SELECT * FROM notifications
-            WHERE receiver = %s
-            ORDER BY id DESC
-        """, (username,))
-        notifications = cursor.fetchall()
-        print("User's notifications:", notifications)
+    # Join with orders + add final selected provider (if any)
+    cur.execute("""
+    SELECT 
+        n.id, n.from_user, n.order_id, o.owner_username, o.service, o.location, o.message AS order_message, 
+        o.created_at AS order_created_at, n.message, n.created_at AS notif_created_at, n.is_read,
+        (
+            SELECT provider_username 
+            FROM order_acceptance 
+            WHERE order_id = n.order_id AND final_selected = TRUE
+            LIMIT 1
+        ) AS approved_provider
+    FROM notifications n
+    JOIN orders o ON o.id = n.order_id
+    WHERE n.to_user = %s
+    ORDER BY n.id DESC
+    """, (session['username'],))
 
-    return render_template('notification.html', notifications=notifications)
+
+    notes = cur.fetchall()
+    cur.close()
+    conn.close()
+
+    return render_template('notification.html', notifications=notes)
+
+@app.route('/notifications/mark_read')
+def mark_notifications_read():
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("UPDATE notifications SET is_read = TRUE WHERE to_user = %s", (session['username'],))
+    conn.commit()
+    return redirect('/notification')
 
 @app.route('/report/<username>', methods=['GET', 'POST'])
 def report(username):
