@@ -11,9 +11,9 @@
 
   <label>Service:</label>
   <select name="service" required>
-    <option value="" disabled {% if not service_name %}selected{% endif %}>Select a service</option>
+    <option value="" disabled>Select a service</option>
     {% for s in services %}
-      <option value="{{ s['service_name'] }}" {% if service_name == s['service_name'] %}selected{% endif %}>{{ s['service_name'] }}</option>
+      <option value="{{ s['service_name'] }}">{{ s['service_name'] }}</option>
     {% endfor %}
   </select><br><br>
 
@@ -31,6 +31,6 @@
   <label>Message:</label><br>
   <textarea name="message" rows="4" cols="40" placeholder="Describe your request..."></textarea><br><br>
 
-  <button type="submit">Submit Order</button>
+  <button type="submit">Place Order</button>
 </form>
 {% endblock %}
