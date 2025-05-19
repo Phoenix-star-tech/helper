@@ -1,14 +1,13 @@
 {% extends 'base.html' %}
 {% block title %}Home - Mr. Helper{% endblock %}
 {% block content %}
-<h2>Welcome to Mr. Helper</h2>
-
+{% if user %}
+  <h2>Welcome back, {{ user.username }}!</h2>
+{% else %}
+  <h2>Welcome to Mr. Helper!</h2>
+{% endif %}
 <div class="search-container">
-  <form
-    action="{{ url_for('search') }}"
-    method="GET"
-    style="position: relative"
-  >
+  <form action="{{ url_for('search') }}" method="GET">
     <input
       type="text"
       id="search-box"
@@ -17,26 +16,24 @@
       autocomplete="off"
       required
     />
-    <button type="submit">Search</button>
+    <button type="submit">
+      <img src="{{ url_for('static', filename='assets/search-icon.png') }}" alt="Search" />
+    </button>
     <div id="search-suggestions" class="suggestions-box"></div>
   </form>
 </div>
 
-<!-- Order Services Button -->
-<a href="{{ url_for('place_order', service='default_service') }}" class="btn btn-success">🛒 Order Services</a>
+<a href="{{ url_for('place_order', service='default_service') }}" class="order-btn">🛒 Order Services</a>
 
-<h3>Available Services:</h3>
-<ul>
+<h3>Available Services</h3>
+<div class="services-grid">
   {% for service in services %}
-    <li>
-      <a class="service_box" href="{{ url_for('service', service_name=service) }}">
-        <img class="service_img" src="{{ url_for('static', filename='assets/' + service_images[service]) }}" alt="{{ service }}" />
-        <span>{{ service }}</span>
-      </a>
-    </li>
+    <a class="service_box" href="{{ url_for('service', service_name=service) }}">
+      <img class="service_img" src="{{ url_for('static', filename='assets/' + service_images[service]) }}" alt="{{ service }}" />
+      <span>{{ service }}</span>
+    </a>
   {% endfor %}
-</ul>
-
+</div>
 <script>
   const searchBox = document.getElementById("search-box");
   const suggestionsBox = document.getElementById("search-suggestions");
@@ -44,21 +41,25 @@
   const placeholders = [
     "Search for House Cleaning...",
     "Search for Electrician...",
-    "Search for a username...",
-    "Search for a location...",
+    "Search for username...",
+    "Search for location...",
     "Search for Motor Repair...",
     "Search for Kitchen Cleaning...",
   ];
 
+  // Rotating placeholder
   let currentPlaceholder = 0;
   setInterval(() => {
     searchBox.setAttribute("placeholder", placeholders[currentPlaceholder]);
     currentPlaceholder = (currentPlaceholder + 1) % placeholders.length;
   }, 2000);
 
+  // Show suggestions on input
   searchBox.addEventListener("input", function () {
-    const query = this.value;
-    if (query.length === 0) {
+    const query = this.value.trim();
+
+    if (!query) {
+      suggestionsBox.style.display = "none";
       suggestionsBox.innerHTML = "";
       return;
     }
@@ -67,24 +68,38 @@
       .then((res) => res.json())
       .then((suggestions) => {
         suggestionsBox.innerHTML = "";
+
+        if (suggestions.length === 0) {
+          suggestionsBox.style.display = "none";
+          return;
+        }
+
+        suggestionsBox.style.display = "block"; // ✅ SHOW suggestions box
+
         suggestions.forEach((item) => {
           const div = document.createElement("div");
-          div.classList.add("suggestion-item");
+          div.className = "suggestion-item";
           div.textContent = item;
           div.onclick = () => {
             searchBox.value = item;
+            suggestionsBox.style.display = "none"; // ✅ HIDE on select
             suggestionsBox.innerHTML = "";
           };
           suggestionsBox.appendChild(div);
         });
+      })
+      .catch(() => {
+        suggestionsBox.innerHTML = "";
+        suggestionsBox.style.display = "none";
       });
   });
 
+  // Hide suggestions when clicking outside
   document.addEventListener("click", (e) => {
     if (!suggestionsBox.contains(e.target) && e.target !== searchBox) {
       suggestionsBox.innerHTML = "";
+      suggestionsBox.style.display = "none";
     }
   });
 </script>
-
 {% endblock %}

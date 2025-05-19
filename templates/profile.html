@@ -5,7 +5,7 @@
   <div class="profile-header">
     <div class="profile-picture">
       {% if user.profile_pic %}
-        <img src="{{ url_for('static', filename='uploads/' + user.profile_pic) }}" alt="Profile Picture" />
+        <img src="{{ user.profile_pic or url_for('static', filename='default-avatar.png') }}" …>
       {% else %}
         <img src="{{ url_for('static', filename='default_profile.png') }}" alt="Default Profile Picture" />
       {% endif %}
@@ -40,9 +40,9 @@
         <form method="POST" action="{{ url_for('rate_comment', username=user.username) }}">
           <div class="star-rating">
             {% for i in range(5, 0, -1) %}
-              <input type="radio" id="star{{ i }}" name="rating" value="{{ i }}" required />
-              <label for="star{{ i }}">★</label>
-            {% endfor %}
+  <input type="radio" id="star{{ i }}" name="rating" value="{{ i }}" required />
+  <label for="star{{ i }}">★</label>
+{% endfor %}
           </div>
           <textarea name="comment" placeholder="Leave a comment..." required></textarea>
           <button type="submit" class="btn">Submit</button>
@@ -158,33 +158,37 @@
 .no-reports {
   margin-bottom: 2rem;
 }
-.feedback-card,
-.notification-card {
+.feedback-card {
   background-color: #f9fafb;
   border: 1px solid #e5e7eb;
   padding: 1rem;
   border-radius: 10px;
   margin-top: 1rem;
+}.star-rating {
+  direction: rtl; /* Reverses the visual direction */
+  unicode-bidi: bidi-override;
+  display: inline-flex;
 }
-.notification-card img {
-  width: 100px;
-  height: 100px;
-  object-fit: cover;
-  margin-top: 1rem;
-}
+
 .star-rating input[type="radio"] {
   display: none;
 }
+
 .star-rating label {
-  font-size: 30px;
-  color: #ccc;
+  font-size: 2rem;
+  color: lightgray;
   cursor: pointer;
 }
-.star-rating input[type="radio"]:checked ~ label,
+
+.star-rating input[type="radio"]:checked ~ label {
+  color: gold;
+}
+
 .star-rating label:hover,
 .star-rating label:hover ~ label {
   color: gold;
 }
+
 textarea {
   width: 100%;
   padding: 10px;

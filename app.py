@@ -6,6 +6,22 @@ from flask import flash
 import os
 import random
 from werkzeug.utils import secure_filename
+import firebase_admin
+from firebase_admin import credentials, messaging
+from pyfcm import FCMNotification
+from flask import send_from_directory
+import cloudinary
+import cloudinary.uploader
+import cloudinary.api
+import uuid
+
+# after your other imports, before using Cloudinary
+cloudinary.config(
+  cloud_name = "dqfombatw",
+  api_key    = "731637769665287",
+  api_secret = "e-d0C1VEJm5Dj-40EM0jNF5kjvk"
+)
+
 
 app = Flask(__name__)
 app.secret_key = 'karthik57'
@@ -13,20 +29,47 @@ app.secret_key = 'karthik57'
 
 # Base paths
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
-UPLOAD_FOLDER = os.path.join(BASE_DIR, 'static', 'uploads')
 DATABASE_URL = "postgresql://postgres.beuvyrvloopqgffoscrd:karthik57@aws-0-ap-south-1.pooler.supabase.com:6543/postgres"
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
-app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
-# Helper functions
 def allowed_file(filename):
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+    return '.' in filename and \
+           filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
+def upload_to_cloudinary(file_storage):
+    result = cloudinary.uploader.upload(
+        file_storage,
+        folder="helper/profile_pics",    # optional organization
+        public_id=str(uuid.uuid4()),       # avoid name collisions
+        overwrite=False,
+        resource_type="image"
+    )
+    return result["secure_url"]
 
 def get_db_connection():
     conn = psycopg2.connect(DATABASE_URL)
     conn.autocommit = True
     return conn
+
+
+# Initialize Firebase Admin SDK
+cred = credentials.Certificate("firebase-service-account-key.json")
+firebase_admin.initialize_app(cred)
+
+def send_push_notification(token, title, body):
+    # Send a push notification to a single device using FCM
+    message = messaging.Message(
+        notification=messaging.Notification(
+            title=title,
+            body=body
+        ),
+        token=token,
+    )
+    try:
+        response = messaging.send(message)
+        print('Successfully sent message:', response)
+    except Exception as e:
+        print(f'Error sending message: {e}')
 
 def init_db():
     with get_db_connection() as conn:
@@ -47,77 +90,22 @@ def init_db():
                 price TEXT
             )
         ''')
-
-        # Create the 'services' table (used to store different service types)
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS services (
-                id SERIAL PRIMARY KEY,
-                service_name TEXT UNIQUE
-            )
-        ''')
-
-        # Create the 'locations' table (used to store locations)
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS locations (
-                id SERIAL PRIMARY KEY,
-                location_name TEXT UNIQUE
-            )
-        ''')
-
-        # Create the 'feedback' table
-        cursor.execute(''' 
-            CREATE TABLE IF NOT EXISTS feedback (
-                id SERIAL PRIMARY KEY,
-                to_user TEXT NOT NULL,
-                from_user TEXT NOT NULL,
-                rating INTEGER NOT NULL,
-                comment TEXT NOT NULL,
-                reply TEXT
-            )
-        ''')
-
-        # Create the 'reports' table
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS reports (
-                id SERIAL PRIMARY KEY,
-                reported_user TEXT NOT NULL,
-                reported_by TEXT NOT NULL,
-                reason TEXT NOT NULL
-            )
-        ''')
-
-        # Create the 'orders' table
-        cursor.execute('''
-    CREATE TABLE IF NOT EXISTS orders (
-        id SERIAL PRIMARY KEY,
-        username TEXT NOT NULL,  -- Renamed from 'user' to 'username'
-        service_id INT NOT NULL,
-        location TEXT NOT NULL,
-        order_message TEXT,
-        order_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    );
-''')
-
-
-        # Create the 'notifications' table
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS notifications (
-                id SERIAL PRIMARY KEY,
-                to_user TEXT NOT NULL,
-                from_user TEXT NOT NULL,
-                order_id INTEGER NOT NULL,
-                FOREIGN KEY(order_id) REFERENCES orders(id)
-            )
-        ''')
-
         conn.commit()
 
 # Routes
 @app.route('/', methods=['GET', 'POST'])
 def login():
+    if 'username' in session:
+        # If already logged in, go to home
+        if session['username'] == 'adime':
+            return redirect(url_for('admin_dashboard'))
+        else:
+            return redirect(url_for('home'))
+
     if request.method == 'POST':
-        username = request.form['username']
+        username = request.form['username'].strip() 
         password = request.form['password']
+
         if username == 'adime' and password == 'adime123':
             session['username'] = username
             return redirect(url_for('admin_dashboard'))
@@ -131,6 +119,8 @@ def login():
                 return redirect(url_for('home'))
             else:
                 return "Invalid username or password"
+
+    # Not logged in and not posting — show login page
     return render_template('login.html')
 
 @app.route('/home')
@@ -186,7 +176,7 @@ def search():
 
             # Search for businesses based on location and business type
             cursor.execute("""
-                SELECT username, business_type, location FROM users
+                SELECT username, business_type, location, price FROM users
                 WHERE (username ILIKE %s OR location ILIKE %s) AND account_type = 'business'
             """, (f'%{query}%', f'%{query}%'))
             business_users = cursor.fetchall()
@@ -229,54 +219,44 @@ def signup():
 @app.route('/signup/business', methods=['GET', 'POST'])
 def signup_business():
     if request.method == 'POST':
-        # Ensure username and password are provided
-        username = request.form['username']
-        password = request.form['password']
+        username = request.form['username'].strip()  # remove leading/trailing spaces
+        password = request.form['password'].strip()
         phone = request.form['phone']
         business_type = request.form['business_type']
         location = request.form['location']
-        bio = request.form.get('bio', '')  # Default to empty string if not provided
-        price = request.form.get('price', '')  # Default to empty string if not provided
+        bio = request.form.get('bio', '')
+        price = request.form.get('price', '')
 
-        # Handle file upload (profile picture)
         profile_pic_file = request.files.get('profile_pic')
         filename = ''
         if profile_pic_file and allowed_file(profile_pic_file.filename):
-            filename = secure_filename(profile_pic_file.filename)
-            profile_pic_file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+            filename = upload_to_cloudinary(profile_pic_file)
 
         try:
             with get_db_connection() as conn:
                 cursor = conn.cursor()
-                
-                # Insert user details into 'users' table
+
+                # Check if the username already exists
+                cursor.execute("SELECT 1 FROM users WHERE username = %s", (username,))
+                if cursor.fetchone():
+                    flash('Username is already taken.', 'danger')
+                    return render_template('signup_business.html')  # Show same page with flash message
+
+                # Insert into users table
                 cursor.execute("""
                     INSERT INTO users 
                     (username, password, account_type, phone, business_type, location, bio, price, profile_pic) 
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """, (username, password, 'business', phone, business_type, location, bio, price, filename))
 
-                # Insert business type into 'services' table if it's not already there
-                cursor.execute("""
-                    INSERT INTO services (service_name) 
-                    VALUES (%s)
-                    ON CONFLICT DO NOTHING
-                """, (business_type,))
-
-                # Insert location into 'locations' table if it's not already there
-                cursor.execute("""
-                    INSERT INTO locations (location_name) 
-                    VALUES (%s)
-                    ON CONFLICT DO NOTHING
-                """, (location,))
-
+                # Insert into services and locations if new
+                cursor.execute("INSERT INTO services (service_name) VALUES (%s) ON CONFLICT DO NOTHING", (business_type,))
+                cursor.execute("INSERT INTO locations (location_name) VALUES (%s) ON CONFLICT DO NOTHING", (location,))
                 conn.commit()
 
-                # Redirect to login page after successful signup
                 return redirect(url_for('login'))
 
         except Exception as e:
-            # Handle any database errors
             print(f"Error: {e}")
             flash('An error occurred during registration. Please try again.', 'danger')
 
@@ -286,20 +266,21 @@ def signup_business():
 def signup_user():
     error = None
     if request.method == 'POST':
-        username = request.form['username']
-        password = request.form['password']
+        username = request.form['username'].strip()
+        password = request.form['password'].strip()
         phone = request.form['phone']
         profile_pic_file = request.files.get('profile_pic')
         filename = ''
         if profile_pic_file and allowed_file(profile_pic_file.filename):
-            filename = secure_filename(profile_pic_file.filename)
-            profile_pic_file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
-        
+            filename = upload_to_cloudinary(profile_pic_file)
+
         with get_db_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT username FROM users WHERE username=%s", (username,))
+             # Check if the username already exists
+            cursor.execute("SELECT 1 FROM users WHERE username = %s", (username,))
             if cursor.fetchone():
-                error = "Username already exists. Please choose a different one."
+                flash('Username is already taken.', 'danger')
+                return render_template('signup_user.html')  # Show same page with flash message
             else:
                 try:
                     cursor.execute("INSERT INTO users (username, password, account_type, phone, profile_pic) VALUES (%s, %s, %s, %s, %s)", 
@@ -362,7 +343,6 @@ def profile(username=None):
                            is_owner=is_owner,
                            is_admin=is_admin)
 
-
 @app.route('/edit_profile', methods=['GET', 'POST'])
 def edit_profile():
     if 'username' not in session:
@@ -372,30 +352,37 @@ def edit_profile():
     
     with get_db_connection() as conn:
         cursor = conn.cursor(cursor_factory=RealDictCursor)
-        cursor.execute("SELECT * FROM users WHERE username=%s", (username,))
-        user = cursor.fetchone()
 
-    if request.method == 'POST':
-        bio = request.form['bio']
-        price = request.form['price']
-        profile_pic_file = request.files.get('profile_pic')
-        filename = user['profile_pic']  # this now works!
+        if request.method == 'POST':
+            bio = request.form.get('bio', '')
+            price = request.form.get('price', '')
 
-        if profile_pic_file and allowed_file(profile_pic_file.filename):
-            filename = secure_filename(profile_pic_file.filename)
-            profile_pic_file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+            # Handle profile picture update
+            profile_pic_file = request.files.get('profile_pic')
+            filename = None
+            if profile_pic_file and allowed_file(profile_pic_file.filename):
+                filename = upload_to_cloudinary(profile_pic_file)
 
-        with get_db_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("""
-                UPDATE users
-                SET bio=%s, price=%s, profile_pic=%s
-                WHERE username=%s
-            """, (bio, price, filename, username))
+            # Update user details
+            if filename:
+                cursor.execute("""
+                    UPDATE users SET bio=%s, price=%s, profile_pic=%s WHERE username=%s
+                """, (bio, price, filename, username))
+            else:
+                cursor.execute("""
+                    UPDATE users SET bio=%s, price=%s WHERE username=%s
+                """, (bio, price, username))
+
             conn.commit()
+            flash('Profile updated successfully.', 'success')
+            return redirect(url_for('profile', username=username))
 
-        flash('Profile updated successfully!', 'success')
-        return redirect(url_for('profile', username=username))
+        # For GET request, fetch current data
+        cursor.execute("SELECT * FROM users WHERE username = %s", (username,))
+        user = cursor.fetchone()
+        if not user:
+            flash('User not found.', 'danger')
+            return redirect(url_for('home'))
 
     return render_template('edit_profile.html', user=user)
 
@@ -404,16 +391,13 @@ def place_order():
     if request.method == 'POST':
         service  = request.form['service']
         location = request.form['location']
-        message = request.form.get('message', 'No message provided')  # Default message if not provided
+        message  = request.form.get('message', 'No message provided')
         image    = request.files.get('image')
 
         # Save image
         image_path = None
-        if image and image.filename:
-            filename   = secure_filename(image.filename)
-            image_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-            image.save(image_path)
-
+        if image and allowed_file(image.filename):
+            image_path = upload_to_cloudinary(image)
         # Open a new DB connection
         conn = get_db_connection()
         cur  = conn.cursor()
@@ -429,16 +413,28 @@ def place_order():
         # Notify matching providers
         cur.execute(""" 
             SELECT username 
-              FROM users 
-             WHERE business_type = %s 
-               AND location      = %s
+            FROM users 
+            WHERE business_type = %s AND location = %s
         """, (service, location))
+        
         for (provider,) in cur.fetchall():
-                link = url_for('order_accept', order_id=order_id)  # add this line
-                cur.execute(""" 
+            link = url_for('order_accept', order_id=order_id)
+
+            # Insert notification into DB
+            cur.execute(""" 
                 INSERT INTO notifications (to_user, from_user, order_id, message, link, created_at, is_read)
                 VALUES (%s, %s, %s, %s, %s, NOW(), false)
-                """, (provider, session['username'], order_id, message, link))
+            """, (provider, session['username'], order_id, message, link))
+
+            # 🔔 Get FCM token of the provider
+            cur.execute("SELECT fcm_token FROM users WHERE username = %s", (provider,))
+            token_result = cur.fetchone()
+            if token_result and token_result[0]:
+                send_push_notification(
+                    token_result[0],
+                    "New Order Available",
+                    f"New order from {session['username']} for {service} in {location}"
+                )
 
         conn.commit()
         cur.close()
@@ -449,13 +445,13 @@ def place_order():
 
     # GET: show form
     conn = get_db_connection()
-    cur  = conn.cursor(cursor_factory=RealDictCursor)  # Make sure to use RealDictCursor for dictionary format
+    cur  = conn.cursor(cursor_factory=RealDictCursor)
 
     cur.execute("SELECT service_name FROM services ORDER BY service_name")
-    services = cur.fetchall()  # Fetch all services as dictionary
+    services = cur.fetchall()
 
     cur.execute("SELECT location_name FROM locations ORDER BY location_name")
-    locations = cur.fetchall()  # Fetch all locations as dictionary
+    locations = cur.fetchall()
 
     cur.close()
     conn.close()
@@ -489,6 +485,16 @@ def approve_provider(order_id):
         INSERT INTO notifications (to_user, from_user, order_id, message, created_at, is_read)
         VALUES (%s, %s, %s, %s, NOW(), FALSE)
     """, (selected_provider, session['username'], order_id, f"You have been approved for Order {order_id}!"))
+
+    # 🔔 Send push notification to the approved provider
+    cur.execute("SELECT fcm_token FROM users WHERE username = %s", (selected_provider,))
+    token_result = cur.fetchone()
+    if token_result and token_result[0]:
+        send_push_notification(
+            token_result[0],
+            "Order Approved",
+            f"You have been approved for Order {order_id}!"
+        )
 
     # Step 4: Notify rejected providers
     cur.execute("""
@@ -529,6 +535,16 @@ def order_accept(order_id):
         INSERT INTO notifications (to_user, from_user, order_id, message, created_at, is_read)
         VALUES (%s, %s, %s, %s, NOW(), FALSE)
     """, (owner, provider, order_id, f"{provider} accepted your order!"))
+
+    # 🔔 Send push notification to the owner
+    cur.execute("SELECT fcm_token FROM users WHERE username = %s", (owner,))
+    token_result = cur.fetchone()
+    if token_result and token_result[0]:
+        send_push_notification(
+            token_result[0],
+            "Order Accepted",
+            f"{provider} accepted your order!"
+        )
 
     conn.commit()
     cur.close()
@@ -587,8 +603,6 @@ def view_accepted_providers(order_id):
 
         flash("Provider selection finalized.")
         return redirect('/home')
-
-    # You don't use the GET method since everything's handled in notification.html
     return "Not Allowed", 405
 
 @app.route('/notifications')
@@ -623,13 +637,70 @@ def notifications():
 
     return render_template('notification.html', notifications=notes)
 
-@app.route('/notifications/mark_read')
-def mark_notifications_read():
+@app.route('/api/notifications')
+def api_notifications():
+    if 'username' not in session:
+        return jsonify([])
+
     conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute("UPDATE notifications SET is_read = TRUE WHERE to_user = %s", (session['username'],))
-    conn.commit()
-    return redirect('/notification')
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    cur.execute("""
+        SELECT 
+            n.id, n.from_user, n.order_id, o.owner_username, o.service, o.location, o.message AS order_message, 
+            o.created_at AS order_created_at, n.message, n.created_at AS notif_created_at, n.is_read,
+            (
+                SELECT provider_username 
+                FROM order_acceptance 
+                WHERE order_id = n.order_id AND final_selected = TRUE
+                LIMIT 1
+            ) AS approved_provider
+        FROM notifications n
+        JOIN orders o ON o.id = n.order_id
+        WHERE n.to_user = %s
+        ORDER BY n.id DESC
+    """, (session['username'],))
+
+    notes = cur.fetchall()
+    cur.close()
+    conn.close()
+
+    return jsonify(notes)
+
+@app.route('/firebase-messaging-sw.js')
+def service_worker():
+    return send_from_directory('static', 'firebase-messaging-sw.js')
+
+@app.route('/register_token', methods=['POST'])
+def register_token():
+    if 'username' not in session:
+        return jsonify({'error': 'Not logged in'}), 401
+
+    data = request.get_json()
+    token = data.get('token')
+
+    if not token:
+        return jsonify({'error': 'Token is required'}), 400
+
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("UPDATE users SET fcm_token=%s WHERE username=%s", (token, session['username']))
+        conn.commit()
+
+    return jsonify({'message': 'Token registered successfully'}), 200
+
+@app.route('/save-token', methods=['POST'])
+def save_token():
+    data = request.json
+    token = data.get('token')
+    user = session.get('username')
+
+    if token and user:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("UPDATE users SET fcm_token = %s WHERE username = %s", (token, user))
+            conn.commit()
+        return jsonify({"status": "success"}), 200
+    return jsonify({"status": "error"}), 400
 
 @app.route('/report/<username>', methods=['GET', 'POST'])
 def report(username):
@@ -686,8 +757,18 @@ def service(service_name):
     with get_db_connection() as conn:
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cursor.execute("""
-            SELECT * FROM users 
-            WHERE account_type = 'business' AND business_type = %s
+            SELECT 
+                u.username,
+                u.location,
+                u.profile_pic,
+                u.price,
+                u.phone,
+                COALESCE(AVG(f.rating), 0) AS avg_rating
+            FROM users u
+            LEFT JOIN feedback f ON u.username = f.to_user
+            WHERE u.account_type = 'business' AND u.business_type = %s
+            GROUP BY u.username, u.location, u.profile_pic, u.price, u.phone
+            ORDER BY avg_rating DESC
         """, (service_name,))
         businesses = cursor.fetchall()
     return render_template('service.html', service_name=service_name, businesses=businesses)

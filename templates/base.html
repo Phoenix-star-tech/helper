@@ -4,234 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Mr. Helper{% endblock %}</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
-    
-    <!-- Font Awesome CDN for icons -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}"> 
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
-
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body, html {
-            height: 100%;
-            display: flex;
-            flex-direction: column;
-            font-family: 'Arial', sans-serif;
-        }
-
-        .container {
-            flex: 1;
-            padding: 20px;
-            background-color: #f4f7f6;
-            overflow-y: auto;
-        }
-
-        nav {
-            position: fixed;
-            bottom: 0;
-            left: 0;
-            width: 100%;
-            background-color: #ffffff;
-            border-top: 1px solid #ccc;
-            display: flex;
-            justify-content: space-around;
-            align-items: center;
-            height: 60px;
-            z-index: 1000;
-            box-shadow: 0 -2px 5px rgba(0,0,0,0.1);
-        }
-
-        nav a {
-            text-decoration: none;
-            color: #333;
-            font-size: 14px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            transition: color 0.3s;
-        }
-
-        nav a i {
-            font-size: 20px;
-            margin-bottom: 3px;
-        }
-
-        nav a:hover {
-            color: #007bff;
-        }
-
-        @media (max-width: 480px) {
-            nav a {
-                font-size: 12px;
-            }
-
-            nav a i {
-                font-size: 18px;
-            }
-        }
-        /* Home Page Styling */
-.home-container {
-    padding: 20px;
-}
-
-.welcome-heading {
-    font-size: 28px;
-    margin-bottom: 20px;
-    text-align: center;
-    color: #333;
-}
-
-/* Search */
-.search-container {
-    display: flex;
-    justify-content: center;
-    margin-bottom: 30px;
-}
-
-.search-container form {
-    width: 100%;
-    max-width: 600px;
-    position: relative;
-}
-
-.search-container input[type="text"] {
-    width: 100%;
-    padding: 12px 20px;
-    padding-right: 50px;
-    border-radius: 30px;
-    border: 1px solid #ccc;
-    font-size: 16px;
-    outline: none;
-    transition: 0.3s;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.05);
-}
-
-.search-container input[type="text"]:focus {
-    border-color: #007bff;
-    box-shadow: 0 0 10px rgba(0,123,255,0.5);
-}
-
-.search-container button {
-    position: absolute;
-    top: 50%;
-    right: 10px;
-    transform: translateY(-50%);
-    background: none;
-    border: none;
-    font-size: 20px;
-    color: #333;
-    cursor: pointer;
-}
-
-.search-container button:hover {
-    color: #007bff;
-}
-
-/* Suggestions Box */
-.suggestions-box {
-    position: absolute;
-    top: 100%;
-    left: 0;
-    right: 0;
-    background: white;
-    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-    border-radius: 0 0 10px 10px;
-    overflow: hidden;
-    z-index: 100;
-}
-
-.suggestion-item {
-    padding: 10px;
-    cursor: pointer;
-    transition: background 0.3s;
-}
-
-.suggestion-item:hover {
-    background-color: #f1f1f1;
-}
-
-/* Order Button */
-.order-btn-container {
-    display: flex;
-    justify-content: center;
-    margin-bottom: 30px;
-}
-
-.order-btn {
-    background-color: #28a745;
-    color: #fff;
-    padding: 12px 25px;
-    border-radius: 30px;
-    text-decoration: none;
-    font-size: 16px;
-    transition: background-color 0.3s;
-}
-
-.order-btn:hover {
-    background-color: #218838;
-}
-
-/* Services Section */
-.services-heading {
-    font-size: 24px;
-    margin-bottom: 20px;
-    text-align: center;
-    color: #444;
-}
-
-.services-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-    gap: 20px;
-}
-
-.service-card {
-    background-color: #fff;
-    padding: 20px;
-    border-radius: 15px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.05);
-    text-align: center;
-    transition: transform 0.3s;
-}
-
-.service-card:hover {
-    transform: translateY(-5px);
-}
-
-.service-card img {
-    width: 80px;
-    height: 80px;
-    object-fit: cover;
-    border-radius: 50%;
-    margin-bottom: 15px;
-}
-
-.service-card h4 {
-    font-size: 18px;
-    color: #333;
-}
-
-/* Responsive */
-@media (max-width: 480px) {
-    .welcome-heading {
-        font-size: 24px;
-    }
-
-    .services-heading {
-        font-size: 20px;
-    }
-
-    .search-container form {
-        padding: 0 10px;
-    }
-}
-
-    </style>
 </head>
 <body>
     <div class="container">
@@ -245,13 +20,17 @@
         </a>
         
         {% if 'username' in session %}
+        <a href="{{ url_for('search') }}">
+            <i class="fas fa-search"></i>
+            <span>Search</span>
+        </a>
+        <a href="{{ url_for('notifications') }}">
+            <i class="fas fa-bell"></i>
+            <span>Notifications</span>
+        </a>
             <a href="{{ url_for('profile') }}">
                 <i class="fas fa-user"></i>
                 <span>Profile</span>
-            </a>
-            <a href="{{ url_for('notifications') }}">
-                <i class="fas fa-bell"></i>
-                <span>Notifications</span>
             </a>
         {% else %}
             <a href="{{ url_for('login') }}">
@@ -260,5 +39,55 @@
             </a>
         {% endif %}
     </nav>
+    <script src="https://www.gstatic.com/firebasejs/10.11.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.11.0/firebase-messaging-compat.js"></script>
+
+<script>
+  // Your web app's Firebase configuration
+  const firebaseConfig = {
+    apiKey: "AIzaSyDDgDqFYxjIgUCbjQpoL2hkmqg9BTmGT_k",
+    authDomain: "helper-8ec94.firebaseapp.com",
+    projectId: "helper-8ec94",
+    messagingSenderId: "688597413695",
+    appId: "1:688597413695:web:43395b6977f3134169ed8a"
+  };
+
+  firebase.initializeApp(firebaseConfig);
+
+  const messaging = firebase.messaging();
+
+  // Ask for permission and get token
+  function initFirebaseMessagingRegistration() {
+    messaging
+      .requestPermission()
+      .then(() => messaging.getToken())
+      .then((token) => {
+        console.log("FCM Token:", token);
+        // Send token to your Flask backend
+        fetch('/save-token', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ token: token })
+        });
+      })
+      .catch((err) => {
+        console.error("FCM Error:", err);
+      });
+  }
+
+  window.onload = initFirebaseMessagingRegistration;
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register("/static/firebase-messaging-sw.js")
+      .then((registration) => {
+        console.log("Service Worker registered:", registration);
+      })
+      .catch((error) => {
+        console.error("Service Worker registration failed:", error);
+      });
+  }
+</script>
+
 </body>
 </html>

@@ -1,70 +1,196 @@
-{% extends 'base.html' %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Business Signup</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='assets/style.css') }}" />
+    <style>
+        body {
+            margin: 0;
+            background: #f8f9fa;
+            font-family: "Segoe UI", sans-serif;
+        }
+        .signup-container {
+            max-width: 500px;
+            margin: 40px auto;
+            background: #ffffff;
+            padding: 30px;
+            border-radius: 16px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.1);
+        }
+        .signup-container h2 {
+            text-align: center;
+            margin-bottom: 25px;
+            color: #343a40;
+        }
+        .form-group {
+            margin-bottom: 16px;
+        }
+        label {
+            font-weight: 600;
+            display: block;
+            margin-bottom: 6px;
+        }
+        input[type="text"],
+        input[type="password"],
+        select,
+        textarea {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            font-size: 14px;
+            outline: none;
+        }
+        textarea {
+            resize: vertical;
+        }
+        .submit-btn {
+            width: 100%;
+            background: #28a745;
+            color: #fff;
+            border: none;
+            padding: 14px;
+            font-size: 16px;
+            border-radius: 10px;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+        .submit-btn:hover {
+            background: #218838;
+        }
 
-{% block title %}Business Signup{% endblock %}
+        .hidden-input {
+            display: none;
+        }
 
-{% block content %}
-<h2>Business Signup</h2>
-<form method="POST" enctype="multipart/form-data">
-    <label>Username:</label>
-    <input type="text" name="username" required>
-    
-    <label>Password:</label>
-    <input type="password" name="password" required>
-    
-    <label>Business Type:</label>
-    <select name="business_type">
-        <optgroup label="House">
-            <option>House Cleaning</option>
-            <option>Room Cleaning</option>
-            <option>Bathroom Cleaning</option>
-            <option>Kitchen Cleaning</option>
-        </optgroup>
-        <option>Plumbing</option>
-        <optgroup label="Electrician">
-            <option>Motor Repair</option>
-            <option>Electrician</option>
-        </optgroup>
-        <optgroup label="Vechile Repair">
-            <option>Two wheeler</option>
-            <option>Three wheeler</option>
-            <option>Four wheeler</option>
-            <option>Heavy Vechile</option>
-        </optgroup>
-    </select>
-    
-    <label>Phone Number:</label>
-    <input type="text" name="phone" required>
-    
-    <label>Location:</label>
-    <input type="text" name="location" required>
-    
-    <label>Bio:</label>
-    <textarea name="bio"></textarea>
+        .upload-label {
+            display: inline-block;
+            background-color: #007bff;
+            color: white;
+            padding: 10px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            text-align: center;
+        }
 
-    <label for="price">Price:</label><br>
-    <input type="text" id="price" name="price" placeholder="Enter your price"><br><br>
+        .upload-label:hover {
+            background-color: #0056b3;
+        }
 
-    
-    <label>Profile Picture:</label>
-    <input type="file" id="imageInput" accept="image/*" name="profile_pic" required>
-    <img id ="previewImage" src="#" alt="Image Preview" style="display:none; width: 100px; height: 100px;"/>
-    <button type="button" class="upload-btn" onclick="document.getElementById('imageInput').click();">upload pic</button>
-    <script>
-        document.getElementById("imageInput").addEventListener("change", function() {
-            let file = this.files[0];
-            if (file) {
-                let reader = new FileReader();
-                reader.onload = function(e) {
-                    let img = document.getElementById("previewImage");
-                    img.src = e.target.result;
-                    img.style.display = "block";
-                }
-                reader.readAsDataURL(file);
+        #previewImage {
+            margin-top: 15px;
+            width: 100px;
+            height: 100px;
+            object-fit: cover;
+            border-radius: 10px;
+            display: none;
+        }
+
+        @media (max-width: 600px) {
+            .signup-container {
+                margin: 20px;
+                padding: 20px;
             }
-        });
-    </script>
-    
-    
-    <button type="submit">Signup</button>
-</form>
-{% endblock %}
+        }
+    </style>
+</head>
+<body>
+    <div class="signup-container">
+        <h2>Business Signup</h2>
+        {% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+    <div>
+      {% for category, message in messages %}
+        <div class="alert alert-{{ category }}">{{ message }}</div>
+      {% endfor %}
+    </div>
+  {% endif %}
+{% endwith %}
+        <form method="POST" enctype="multipart/form-data">
+            <div class="form-group">
+                <label for="imageInput" class="upload-label">Upload Profile Picture</label>
+                <input type="file" id="imageInput" name="profile_pic" class="hidden-input" accept="image/*" required>
+                <img id="previewImage" alt="Image Preview">
+            </div>
+
+            <div class="form-group">
+                <label>Username</label>
+                <input type="text" name="username" required>
+            </div>
+
+            <div class="form-group">
+                <label>Password</label>
+                <input type="password" name="password" required>
+            </div>
+
+            <div class="form-group">
+                <label>Business Type</label>
+                <select name="business_type">
+                    <optgroup label="House">
+                        <option>House Cleaning</option>
+                        <option>Room Cleaning</option>
+                        <option>Bathroom Cleaning</option>
+                        <option>Kitchen Cleaning</option>
+                    </optgroup>
+                    <option>Plumbing</option>
+                    <optgroup label="Electrician">
+                        <option>Motor Repair</option>
+                        <option>Electrician</option>
+                    </optgroup>
+                    <optgroup label="Vehicle Repair">
+                        <option>Two wheeler</option>
+                        <option>Three wheeler</option>
+                        <option>Four wheeler</option>
+                        <option>Heavy Vehicle</option>
+                    </optgroup>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label>Location</label>
+                <select name="location" required>
+                    <option>Hyderabad</option>
+                    <option>Warangal</option>
+                    <option>Hanamkonda</option>
+                    <option>Kazipet</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label>Phone Number</label>
+                <input type="text" name="phone" required>
+            </div>
+
+            <div class="form-group">
+                <label>Bio</label>
+                <textarea name="bio" rows="3"></textarea>
+            </div>
+
+            <div class="form-group">
+                <label>Price</label>
+                <input type="text" name="price" placeholder="Enter your price">
+            </div>
+
+            <button type="submit" class="submit-btn">Signup</button>
+        </form>
+    </div>
+
+     <script>
+            document.getElementById("imageInput").addEventListener("change", function() {
+                let file = this.files[0];
+                if (file) {
+                    let reader = new FileReader();
+                    reader.onload = function(e) {
+                        let img = document.getElementById("previewImage");
+                        img.src = e.target.result;
+                        img.style.display = "block";
+                    }
+                    reader.readAsDataURL(file);
+                }
+            });
+        </script>
+
+</body>
+</html>

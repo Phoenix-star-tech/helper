@@ -1,99 +1,148 @@
 {% extends 'base.html' %}
 {% block title %}Admin Dashboard{% endblock %}
+
 {% block content %}
+<div class="min-h-screen bg-gray-50 p-6">
+  <div class="max-w-7xl mx-auto">
+    <div class="flex items-center justify-between mb-6">
+      <h2 class="text-3xl font-extrabold text-gray-900">Welcome, Admin</h2>
+      <a href="{{ url_for('logout') }}"
+         class="px-4 py-2 bg-red-500 text-white rounded-lg shadow hover:bg-red-600 transition">
+        Logout
+      </a>
+    </div>
 
-<h2>Welcome, Admin</h2>
-<h3>Delete User Accounts</h3>
+    <!-- Search -->
+    <div class="mb-8">
+      <input
+        type="text"
+        id="searchInput"
+        placeholder="Search by username, type, or location…"
+        class="w-full md:w-1/2 px-4 py-3 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+      />
+    </div>
 
-<input type="text" id="searchInput" placeholder="Search by username, type, or location..." style="margin-bottom: 10px; width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #ccc;">
-
-<table id="userTable">
-  <tr>
-    <th>Username</th>
-    <th>Type</th>
-    <th>Location</th>
-    <th>Action</th>
-  </tr>
-  {% for user in users %}
-  <tr>
-    <td><a href="{{ url_for('profile', username=user.username) }}" style="text-decoration: none; color: #007BFF;">
-      {{ user.username }}
-    </a></td>
-    <td>{{ user.account_type }}</td>
-    <td>{{ user.location or 'N/A' }}</td>
-    <td>
-      <form action="{{ url_for('delete_user', username=user.username) }}" method="POST" onsubmit="return confirm('Are you sure you want to delete {{ user.username }}?');">
-        <button type="submit">Delete</button>
-      </form>
-    </td>
-  </tr>
-  {% endfor %}
-</table>
-<h3>Reported Users</h3>
-<table>
-  <tr>
-    <th>Username</th>
-    <th>Report Count</th>
-    <th>Reasons</th>
-    <th>Action</th>
-  </tr>
-  {% for report in reported_users %}
-  <tr>
-    <td><a href="{{ url_for('profile', username=report['reported_user']) }}">{{ report['reported_user'] }}</a></td>
-    <td>{{ report['report_count'] }}</td>
-    <td>
-      <button onclick="toggleReasons('reason-{{ loop.index0 }}')">View Reasons</button>
-      <div id="reasons-{{ loop.index0 }}" style="display:none; margin-top: 8px; background: #f8f9fa; padding: 10px; border-radius: 8px; border: 1px solid #ccc; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-        <ul style="margin: 0; padding-left: 20px;">
-          {% for reason in report['reasons'] %}
-            <li>{{ reason }}</li>
+    <!-- Users Table (desktop) / Cards (mobile) -->
+    <div class="overflow-x-auto">
+      <table id="userTable" class="min-w-full bg-white rounded-lg shadow hidden md:table">
+        <thead class="bg-gray-100 uppercase text-gray-600 text-sm sticky top-0">
+          <tr>
+            <th class="px-6 py-3 text-left">Username</th>
+            <th class="px-6 py-3 text-left">Type</th>
+            <th class="px-6 py-3 text-left">Location</th>
+            <th class="px-6 py-3 text-center">Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for user in users %}
+          <tr class="border-b hover:bg-gray-50">
+            <td class="px-6 py-4">
+              <a href="{{ url_for('profile', username=user.username) }}"
+                 class="text-indigo-600 hover:underline font-medium">
+                {{ user.username }}
+              </a>
+            </td>
+            <td class="px-6 py-4">{{ user.account_type }}</td>
+            <td class="px-6 py-4">{{ user.location or 'N/A' }}</td>
+            <td class="px-6 py-4 text-center">
+              <form action="{{ url_for('delete_user', username=user.username) }}" method="POST"
+                    onsubmit="return confirm('Delete {{ user.username }}?');">
+                <button type="submit"
+                        class="px-3 py-1 bg-red-500 text-white rounded-lg hover:bg-red-600 transition">
+                  Delete
+                </button>
+              </form>
+            </td>
+          </tr>
           {% endfor %}
-        </ul>
-      </div>      
-    </td>    
-    <td>
-      <form action="{{ url_for('delete_user', username=report['reported_user']) }}" method="POST" onsubmit="return confirm('Are you sure you want to delete {{ report['reported_user'] }}?');">
-        <button type="submit">Delete</button>
-      </form>
-    </td>
-  </tr>
-  {% endfor %}
-</table>
-</table>
+        </tbody>
+      </table>
 
+      <!-- Mobile Cards -->
+      <div class="grid gap-4 md:hidden">
+        {% for user in users %}
+        <div class="bg-white p-4 rounded-lg shadow flex flex-col">
+          <div class="flex justify-between items-center mb-2">
+            <a href="{{ url_for('profile', username=user.username) }}"
+               class="text-lg font-semibold text-indigo-600 hover:underline">
+              {{ user.username }}
+            </a>
+            <form action="{{ url_for('delete_user', username=user.username) }}" method="POST"
+                  onsubmit="return confirm('Delete {{ user.username }}?');">
+              <button type="submit"
+                      class="px-2 py-1 bg-red-500 text-white rounded-full hover:bg-red-600 transition text-sm">
+                ✕
+              </button>
+            </form>
+          </div>
+          <div class="text-sm text-gray-600">{{ user.account_type }}</div>
+          <div class="text-sm text-gray-600">{{ user.location or 'N/A' }}</div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
 
-<a href="{{ url_for('logout') }}">Logout</a>
+    <!-- Reported Users -->
+    <div class="mt-12">
+      <h3 class="text-2xl font-bold text-gray-800 mb-4">Reported Users</h3>
+      <div class="space-y-4">
+        {% for report in reported_users %}
+        <div class="bg-white rounded-lg shadow p-4">
+          <div class="flex justify-between items-center">
+            <div>
+              <a href="{{ url_for('profile', username=report.reported_user) }}"
+                 class="text-indigo-600 font-medium hover:underline">
+                {{ report.reported_user }}
+              </a>
+              <span class="ml-2 text-sm text-gray-500">({{ report.report_count }} reports)</span>
+            </div>
+            <div class="space-x-2">
+              <button onclick="toggleReasons('reasons-{{ loop.index0 }}')"
+                      class="px-3 py-1 bg-yellow-400 text-white rounded-lg hover:bg-yellow-500 transition text-sm">
+                View Reasons
+              </button>
+              <form action="{{ url_for('delete_user', username=report.reported_user) }}" method="POST"
+                    onsubmit="return confirm('Delete {{ report.reported_user }}?');" class="inline">
+                <button type="submit"
+                        class="px-3 py-1 bg-red-500 text-white rounded-lg hover:bg-red-600 transition text-sm">
+                  Delete
+                </button>
+              </form>
+            </div>
+          </div>
+          <div id="reasons-{{ loop.index0 }}" class="mt-3 p-3 bg-gray-50 rounded-lg border border-gray-200 hidden">
+            <ul class="list-disc list-inside text-gray-700">
+              {% for reason in report.reasons %}
+              <li>{{ reason }}</li>
+              {% endfor %}
+            </ul>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</div>
 
 <script>
-  const searchInput = document.getElementById("searchInput");
-  const table = document.getElementById("userTable");
-  const rows = table.getElementsByTagName("tr");
-
-  searchInput.addEventListener("input", function () {
-    const filter = searchInput.value.toLowerCase();
-
-    for (let i = 1; i < rows.length; i++) {
-      const cells = rows[i].getElementsByTagName("td");
-      let match = false;
-      for (let j = 0; j < 3; j++) { // username, type, location
-        if (cells[j] && cells[j].textContent.toLowerCase().includes(filter)) {
-          match = true;
-          break;
-        }
-      }
-      rows[i].style.display = match ? "" : "none";
-    }
+  // Search filter
+  document.getElementById('searchInput').addEventListener('input', function(e) {
+    const filter = e.target.value.toLowerCase();
+    document.querySelectorAll('#userTable tbody tr').forEach(row => {
+      const text = row.innerText.toLowerCase();
+      row.style.display = text.includes(filter) ? '' : 'none';
+    });
+    // mobile cards
+    document.querySelectorAll('.md\\:hidden > div').forEach(card => {
+      const text = card.innerText.toLowerCase();
+      card.style.display = text.includes(filter) ? '' : 'none';
+    });
   });
-</script>
-<script>
+
+  // Toggle reasons panels
   function toggleReasons(id) {
-    const reasonDiv = document.getElementById(id);
-    if (reasonDiv) {
-      reasonDiv.style.display = reasonDiv.style.display === 'none' ? 'block' : 'none';
-    } else {
-      alert("Could not find the reason div 😢");
-    }
+    const panel = document.getElementById(id);
+    panel.classList.toggle('hidden');
   }
 </script>
-
 {% endblock %}

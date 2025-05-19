@@ -2,132 +2,144 @@
 {% block title %}Search Results - Mr. Helper{% endblock %}
 {% block content %}
 
-<h2>Search Results for "{{ query }}"</h2>
+<div class="container mx-auto px-4 py-6">
+  <h2 class="text-2xl font-bold mb-4 text-center">Search Results for "{{ query }}"</h2>
 
 <div class="search-container">
-  <form action="{{ url_for('search') }}" method="GET" style="position: relative;">
-    <input type="text" id="search-box" name="q" value="{{ query }}" placeholder="Search..." autocomplete="off" required>
-    <button type="submit">Search</button>
+  <form action="{{ url_for('search') }}" method="GET">
+    <input
+      type="text"
+      id="search-box"
+      name="q"
+      placeholder="Search services..."
+      autocomplete="off"
+      required
+    />
+    <button type="submit">
+      <img src="{{ url_for('static', filename='assets/search-icon.png') }}" alt="Search" />
+    </button>
     <div id="search-suggestions" class="suggestions-box"></div>
   </form>
 </div>
 
-<div class="results-container">
-  {% if service_results %}
-    <h3>Services</h3>
-    <ul class="services-list">
-      {% for service in service_results %}
-        <li>
-          <a href="{{ url_for('service', service_name=service.service_name) }}">
-            {{ service.service_name }}
-          </a>          
-        </li>
-      {% endfor %}
-    </ul>
-  {% endif %}
+  <!-- Results -->
+  <div class="space-y-8">
 
-  {% if location_results %}
-  <h3>Locations</h3>
-  <ul class="location-list">
-    {% for location in location_results %}
-      <li>{{ location.location_name }}</li>
-    {% endfor %}
-  </ul>
-{% endif %}
+    {% if service_results %}
+    <div>
+      <h3 class="text-xl font-semibold mb-2">Services</h3>
+      <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {% for service in service_results %}
+        <a href="{{ url_for('service', service_name=service.service_name) }}" class="block p-4 border rounded-lg shadow-sm hover:bg-gray-50 transition">
+          <div class="font-medium text-blue-700">{{ service.service_name }}</div>
+        </a>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
 
-  {% if business_results %}
-    <h3>Service Providers</h3>
-    <ul class="business-list">
-      {% for business in business_results %}
-        <li>
-          <a href="{{ url_for('profile', username=business.username) }}">
-            <strong>{{ business.username }}</strong> - {{ business.business_type }}
-<span class="location">{{ business.location }}</span>
-            <span class="rating">{{
-business.rating }} ★</span>
-            <span class="price">{% if business.price %}{{ business.price }}{% else %}Not provided{% endif %}</span>
-          </a>
-        </li>
-      {% endfor %}
-    </ul>
-  {% endif %}
+    {% if location_results %}
+    <div>
+      <h3 class="text-xl font-semibold mb-2">Locations</h3>
+      <ul class="list-disc list-inside text-gray-700">
+        {% for location in location_results %}
+        <li>{{ location.location_name }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
 
-  {% if not service_results and not business_results %}
-    <p>No results found for "{{ query }}".</p>
-  {% endif %}
-</div>
+    {% if business_results %}
+    <div>
+      <h3 class="text-xl font-semibold mb-2">Service Providers</h3>
+      <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {% for business in business_results %}
+        <a href="{{ url_for('profile', username=business.username) }}" class="block p-4 border rounded-lg shadow hover:shadow-md transition bg-white">
+          <div class="text-lg font-bold text-gray-800">{{ business.username }}</div>
+          <div class="text-sm text-gray-500">{{ business.business_type }} - {{ business.location }}</div>
+          <div class="mt-2 flex items-center justify-between text-sm text-gray-600">
+            <span class="rating">⭐ {{ business.rating }}</span>
+            <span class="price">{{ business.price or "Not provided" }}</span>
+          </div>
+        </a>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
 
-<a class="back-link" href="{{ url_for('home') }}">Back to Home</a>
+    {% if not service_results and not business_results and not location_results %}
+    <div class="text-center text-gray-600">
+      <p>No results found for "<strong>{{ query }}</strong>".</p>
+    </div>
+    {% endif %}
+  </div>
 
 <script>
-  const searchBox = document.getElementById('search-box');
-  const suggestionsBox = document.getElementById('search-suggestions');
+  const searchBox = document.getElementById("search-box");
+  const suggestionsBox = document.getElementById("search-suggestions");
 
-  
   const placeholders = [
     "Search for House Cleaning...",
     "Search for Electrician...",
-    "Search for a username...",
-    "Search for a location...",
+    "Search for username...",
+    "Search for location...",
     "Search for Motor Repair...",
-    "Search for Kitchen Cleaning..."
+    "Search for Kitchen Cleaning...",
   ];
 
+  // Rotating placeholder
   let currentPlaceholder = 0;
   setInterval(() => {
-    searchBox.setAttribute('placeholder', placeholders[currentPlaceholder]);
+    searchBox.setAttribute("placeholder", placeholders[currentPlaceholder]);
     currentPlaceholder = (currentPlaceholder + 1) % placeholders.length;
   }, 2000);
 
+  // Show suggestions on input
+  searchBox.addEventListener("input", function () {
+    const query = this.value.trim();
 
-searchBox.addEventListener('input', function () {
-  const query = this.value;  // Get the current search query
-  if (query.length === 0) {
-    suggestionsBox.innerHTML = '';  // Clear suggestions when the input is empty
-    return;
-  }
+    if (!query) {
+      suggestionsBox.style.display = "none";
+      suggestionsBox.innerHTML = "";
+      return;
+    }
 
-  console.log(`Searching for: ${query}`);  // Log the current search query to check
+    fetch(`/suggest?term=${encodeURIComponent(query)}`)
+      .then((res) => res.json())
+      .then((suggestions) => {
+        suggestionsBox.innerHTML = "";
 
-  // Fetch suggestions based on the input
-  fetch(`/suggest?term=${encodeURIComponent(query)}`)
-    .then(res => res.json())  // Parse the JSON response
-    .then(suggestions => {
-      console.log(suggestions);  // Log the suggestions for debugging
+        if (suggestions.length === 0) {
+          suggestionsBox.style.display = "none";
+          return;
+        }
 
-      suggestionsBox.innerHTML = '';  // Clear previous suggestions
+        suggestionsBox.style.display = "block"; // ✅ SHOW suggestions box
 
-      // If suggestions exist, display them
-      if (suggestions.length > 0) {
-        suggestions.forEach(item => {
-          const div = document.createElement('div');
-          div.classList.add('suggestion-item');
+        suggestions.forEach((item) => {
+          const div = document.createElement("div");
+          div.className = "suggestion-item";
           div.textContent = item;
-
-          // When a suggestion is clicked, populate the search box with it
           div.onclick = () => {
             searchBox.value = item;
-            suggestionsBox.innerHTML = '';  // Clear suggestions after selecting one
+            suggestionsBox.style.display = "none"; // ✅ HIDE on select
+            suggestionsBox.innerHTML = "";
           };
-
           suggestionsBox.appendChild(div);
         });
-      } else {
-        suggestionsBox.innerHTML = '<div>No suggestions found</div>';  // Display if no suggestions
-      }
-    })
-    .catch(error => {
-      console.error('Error fetching suggestions:', error);  // Log any errors
-      suggestionsBox.innerHTML = '<div>Error loading suggestions</div>';
-    });
-});
+      })
+      .catch(() => {
+        suggestionsBox.innerHTML = "";
+        suggestionsBox.style.display = "none";
+      });
+  });
 
-document.addEventListener('click', (e) => {
-  if (!suggestionsBox.contains(e.target) && e.target !== searchBox) {
-    suggestionsBox.innerHTML = '';  // Close suggestions box when clicking outside
-  }
-});
-
+  // Hide suggestions when clicking outside
+  document.addEventListener("click", (e) => {
+    if (!suggestionsBox.contains(e.target) && e.target !== searchBox) {
+      suggestionsBox.innerHTML = "";
+      suggestionsBox.style.display = "none";
+    }
+  });
 </script>
-
 {% endblock %}

@@ -2,3 +2,7 @@ Flask
 psycopg2-binary
 werkzeug
 gunicorn
+firebase-admin>=6.0
+pyfcm>=1.5
+cloudinary>=1.29
+google-cloud-storage>=2.0
