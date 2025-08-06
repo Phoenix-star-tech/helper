@@ -14,6 +14,7 @@ import cloudinary
 import cloudinary.uploader
 import cloudinary.api
 import uuid
+import random
 
 # after your other imports, before using Cloudinary
 cloudinary.config(
@@ -31,6 +32,13 @@ app.secret_key = 'karthik57'
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 DATABASE_URL = "postgresql://postgres.beuvyrvloopqgffoscrd:karthik57@aws-0-ap-south-1.pooler.supabase.com:6543/postgres"
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
+
+def generate_unique_helperid(cursor):
+    while True:
+        helperid = ''.join([str(random.randint(0, 9)) for _ in range(10)])  # Generate 10-digit number
+        cursor.execute("SELECT 1 FROM users WHERE helperid = %s", (helperid,))
+        if not cursor.fetchone():
+            return helperid
 
 def allowed_file(filename):
     return '.' in filename and \
@@ -93,7 +101,12 @@ def init_db():
         conn.commit()
 
 # Routes
-@app.route('/', methods=['GET', 'POST'])
+
+@app.route('/', methods=['GET'])
+def loading():
+    return render_template('loading.html')
+
+@app.route('/login', methods=['GET', 'POST'])
 def login():
     if 'username' in session:
         # If already logged in, go to home
@@ -219,9 +232,10 @@ def signup():
 @app.route('/signup/business', methods=['GET', 'POST'])
 def signup_business():
     if request.method == 'POST':
-        username = request.form['username'].strip()  # remove leading/trailing spaces
+        username = request.form['username'].strip()
         password = request.form['password'].strip()
         phone = request.form['phone']
+        gmail = request.form['gmail']  # FIX: changed () to []
         business_type = request.form['business_type']
         location = request.form['location']
         bio = request.form.get('bio', '')
@@ -240,14 +254,17 @@ def signup_business():
                 cursor.execute("SELECT 1 FROM users WHERE username = %s", (username,))
                 if cursor.fetchone():
                     flash('Username is already taken.', 'danger')
-                    return render_template('signup_business.html')  # Show same page with flash message
+                    return render_template('signup_business.html')
+
+                # Generate unique 10-digit helper ID
+                helperid = generate_unique_helperid(cursor)
 
                 # Insert into users table
                 cursor.execute("""
                     INSERT INTO users 
-                    (username, password, account_type, phone, business_type, location, bio, price, profile_pic) 
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-                """, (username, password, 'business', phone, business_type, location, bio, price, filename))
+                    (username, password, account_type, phone, gmail, business_type, location, bio, price, profile_pic, helperid) 
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """, (username, password, 'business', phone, gmail, business_type, location, bio, price, filename, helperid))
 
                 # Insert into services and locations if new
                 cursor.execute("INSERT INTO services (service_name) VALUES (%s) ON CONFLICT DO NOTHING", (business_type,))
