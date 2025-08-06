@@ -13,6 +13,8 @@
     <div class="profile-info">
       <h2>{{ user.username }}</h2>
       <p>📞 {{ user.phone }}</p>
+      <p>📧 {{ user.gmail }}</p>
+      <p>ID: {{user.helperid}}</p>
       {% if user.account_type == 'business' %}
         <p>🏢 {{ user.business_type }}</p>
         <p>📍 {{ user.location }}</p>
