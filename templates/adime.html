@@ -1,7 +1,15 @@
-{% extends 'base.html' %}
-{% block title %}Admin Dashboard{% endblock %}
+<!DOCTYPE html>
+<html lang="en">
 
-{% block content %}
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Admin Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="{{ url_for('static', filename='assets/style.css') }}" />
+</head>
+
+<body class="bg-gray-50">
 <div class="min-h-screen bg-gray-50 p-6">
   <div class="max-w-7xl mx-auto">
     <div class="flex items-center justify-between mb-6">
@@ -13,74 +21,76 @@
     </div>
 
     <!-- Search -->
-    <div class="mb-8">
-      <input
-        type="text"
-        id="searchInput"
-        placeholder="Search by username, type, or location…"
-        class="w-full md:w-1/2 px-4 py-3 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-      />
-    </div>
+   <!-- Updated Search -->
+<div class="mb-8">
+  <input
+    type="text"
+    id="searchInput"
+    placeholder="Search by username, helper ID, type, or location…"
+    class="w-full md:w-1/2 px-4 py-3 border border-gray-300 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 transition"
+  />
+</div>
 
-    <!-- Users Table (desktop) / Cards (mobile) -->
-    <div class="overflow-x-auto">
-      <table id="userTable" class="min-w-full bg-white rounded-lg shadow hidden md:table">
-        <thead class="bg-gray-100 uppercase text-gray-600 text-sm sticky top-0">
-          <tr>
-            <th class="px-6 py-3 text-left">Username</th>
-            <th class="px-6 py-3 text-left">Type</th>
-            <th class="px-6 py-3 text-left">Location</th>
-            <th class="px-6 py-3 text-center">Action</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for user in users %}
-          <tr class="border-b hover:bg-gray-50">
-            <td class="px-6 py-4">
-              <a href="{{ url_for('profile', username=user.username) }}"
-                 class="text-indigo-600 hover:underline font-medium">
-                {{ user.username }}
-              </a>
-            </td>
-            <td class="px-6 py-4">{{ user.account_type }}</td>
-            <td class="px-6 py-4">{{ user.location or 'N/A' }}</td>
-            <td class="px-6 py-4 text-center">
-              <form action="{{ url_for('delete_user', username=user.username) }}" method="POST"
-                    onsubmit="return confirm('Delete {{ user.username }}?');">
-                <button type="submit"
-                        class="px-3 py-1 bg-red-500 text-white rounded-lg hover:bg-red-600 transition">
-                  Delete
-                </button>
-              </form>
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+<!-- Users Table (desktop) -->
+<table id="userTable" class="min-w-full bg-white rounded-lg shadow hidden md:table">
+  <thead class="bg-gray-100 uppercase text-gray-600 text-sm sticky top-0">
+    <tr>
+      <th class="px-6 py-3 text-left">Username</th>
+      <th class="px-6 py-3 text-left">Helper ID</th>
+      <th class="px-6 py-3 text-left">Type</th>
+      <th class="px-6 py-3 text-left">Location</th>
+      <th class="px-6 py-3 text-center">Action</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for user in users %}
+    <tr class="border-b hover:bg-gray-50">
+      <td class="px-6 py-4">
+        <a href="{{ url_for('profile', username=user.username) }}"
+           class="text-indigo-600 hover:underline font-medium">
+          {{ user.username }}
+        </a>
+      </td>
+      <td class="px-6 py-4 text-gray-700 font-mono">{{ user.helperid or 'N/A' }}</td>
+      <td class="px-6 py-4">{{ user.account_type }}</td>
+      <td class="px-6 py-4">{{ user.location or 'N/A' }}</td>
+      <td class="px-6 py-4 text-center">
+        <form action="{{ url_for('delete_user', username=user.username) }}" method="POST"
+              onsubmit="return confirm('Delete {{ user.username }}?');">
+          <button type="submit"
+                  class="px-3 py-1 bg-red-500 text-white rounded-lg hover:bg-red-600 transition">
+            Delete
+          </button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
 
-      <!-- Mobile Cards -->
-      <div class="grid gap-4 md:hidden">
-        {% for user in users %}
-        <div class="bg-white p-4 rounded-lg shadow flex flex-col">
-          <div class="flex justify-between items-center mb-2">
-            <a href="{{ url_for('profile', username=user.username) }}"
-               class="text-lg font-semibold text-indigo-600 hover:underline">
-              {{ user.username }}
-            </a>
-            <form action="{{ url_for('delete_user', username=user.username) }}" method="POST"
-                  onsubmit="return confirm('Delete {{ user.username }}?');">
-              <button type="submit"
-                      class="px-2 py-1 bg-red-500 text-white rounded-full hover:bg-red-600 transition text-sm">
-                ✕
-              </button>
-            </form>
-          </div>
-          <div class="text-sm text-gray-600">{{ user.account_type }}</div>
-          <div class="text-sm text-gray-600">{{ user.location or 'N/A' }}</div>
-        </div>
-        {% endfor %}
-      </div>
+<!-- Mobile Cards -->
+<div class="grid gap-4 md:hidden">
+  {% for user in users %}
+  <div class="bg-white p-4 rounded-lg shadow flex flex-col">
+    <div class="flex justify-between items-center mb-2">
+      <a href="{{ url_for('profile', username=user.username) }}"
+         class="text-lg font-semibold text-indigo-600 hover:underline">
+        {{ user.username }}
+      </a>
+      <form action="{{ url_for('delete_user', username=user.username) }}" method="POST"
+            onsubmit="return confirm('Delete {{ user.username }}?');">
+        <button type="submit"
+                class="px-2 py-1 bg-red-500 text-white rounded-full hover:bg-red-600 transition text-sm">
+          ✕
+        </button>
+      </form>
     </div>
+    <div class="text-sm text-gray-600"><strong>Helper ID:</strong> {{ user.helperid or 'N/A' }}</div>
+    <div class="text-sm text-gray-600">{{ user.account_type }}</div>
+    <div class="text-sm text-gray-600">{{ user.location or 'N/A' }}</div>
+  </div>
+  {% endfor %}
+</div>
 
     <!-- Reported Users -->
     <div class="mt-12">
@@ -145,4 +155,5 @@
     panel.classList.toggle('hidden');
   }
 </script>
-{% endblock %}
+</body>
+</html>
