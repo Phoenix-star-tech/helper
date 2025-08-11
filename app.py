@@ -13,6 +13,7 @@ from flask import send_from_directory
 import cloudinary
 import cloudinary.uploader
 import cloudinary.api
+from functools import wraps
 import uuid
 import random
 
@@ -32,6 +33,15 @@ app.secret_key = 'karthik57'
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 DATABASE_URL = "postgresql://postgres.beuvyrvloopqgffoscrd:karthik57@aws-0-ap-south-1.pooler.supabase.com:6543/postgres"
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
+
+
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'username' not in session:
+            return redirect(url_for('login'))
+        return f(*args, **kwargs)
+    return decorated_function
 
 def generate_unique_helperid(cursor):
     while True:
@@ -101,10 +111,14 @@ def init_db():
         conn.commit()
 
 # Routes
-
-@app.route('/', methods=['GET'])
-def loading():
-    return render_template('loading.html')
+# ---------- ROOT ----------
+@app.route('/')
+def root():
+    if 'username' in session:
+        if session['username'] == 'adime':
+            return redirect(url_for('admin_dashboard'))
+        return redirect(url_for('home'))
+    return redirect(url_for('login'))
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -135,6 +149,12 @@ def login():
 
     # Not logged in and not posting — show login page
     return render_template('login.html')
+
+@app.route('/logout')
+def logout():
+    session.pop('username', None)
+    flash('You have been logged out.', 'info')
+    return redirect(url_for('login'))
 
 @app.route('/home')
 def home():
@@ -199,20 +219,62 @@ def search():
                        service_results=services, 
                        business_results=business_users)
 
+# ---------- ADMIN ----------
 @app.route('/admin')
 def admin_dashboard():
     if 'username' not in session or session['username'] != 'adime':
+        flash('Access denied: Admins only.', 'danger')
         return redirect(url_for('login'))
 
     with get_db_connection() as conn:
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
         cursor.execute("SELECT * FROM users WHERE username != 'adime'")
         users = cursor.fetchall()
+
+        cursor.execute("SELECT * FROM kyc")
+        kyc_requests = cursor.fetchall()
 
         cursor.execute("SELECT reported_user, COUNT(*) as report_count FROM reports GROUP BY reported_user")
         reported_users = cursor.fetchall()
 
-    return render_template('adime.html', users=users, reported_users=reported_users)
+    return render_template(
+        'adime.html',
+        users=users,
+        reported_users=reported_users,
+        kyc_requests=kyc_requests
+    )
+
+@app.route('/admin/kyc/accept/<username>', methods=['POST'])
+def accept_kyc(username):
+    with get_db_connection() as conn:
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cursor.execute("SELECT * FROM kyc WHERE username = %s", (username,))
+        user = cursor.fetchone()
+
+        if user:
+            cursor.execute("""
+                INSERT INTO users 
+                (username, password, account_type, phone, gmail, business_type, location, bio, price, profile_pic, helperid) 
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """, (user['username'], user['password'], 'business', user['phone'], user['gmail'],
+                  user['business_type'], user['location'], user['bio'], user['price'],
+                  user['profile_pic'], user['helperid']))
+            
+            # Clean up from KYC
+            cursor.execute("DELETE FROM kyc WHERE username = %s", (username,))
+            conn.commit()
+    
+    return redirect(url_for('admin_dashboard'))
+
+@app.route('/admin/kyc/reject/<username>', methods=['POST'])
+def reject_kyc(username):
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM kyc WHERE username = %s", (username,))
+        conn.commit()
+    
+    return redirect(url_for('admin_dashboard'))
 
 @app.route('/delete_user/<username>', methods=['POST'])
 def delete_user(username):
@@ -235,6 +297,7 @@ def signup_business():
         username = request.form['username'].strip()
         password = request.form['password'].strip()
         phone = request.form['phone']
+        gender = request.form['gender']
         gmail = request.form['gmail']  # FIX: changed () to []
         business_type = request.form['business_type']
         location = request.form['location']
@@ -251,7 +314,7 @@ def signup_business():
                 cursor = conn.cursor()
 
                 # Check if the username already exists
-                cursor.execute("SELECT 1 FROM users WHERE username = %s", (username,))
+                cursor.execute("SELECT 1 FROM users WHERE username = %s UNION SELECT 1 FROM kyc WHERE username = %s", (username, username))
                 if cursor.fetchone():
                     flash('Username is already taken.', 'danger')
                     return render_template('signup_business.html')
@@ -261,17 +324,18 @@ def signup_business():
 
                 # Insert into users table
                 cursor.execute("""
-                    INSERT INTO users 
-                    (username, password, account_type, phone, gmail, business_type, location, bio, price, profile_pic, helperid) 
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                """, (username, password, 'business', phone, gmail, business_type, location, bio, price, filename, helperid))
+                    INSERT INTO kyc 
+                    (username, password,gender, phone, gmail, business_type, location, bio, price, profile_pic, helperid)
+                    VALUES (%s, %s, %s, %s, %s, %s,%s, %s, %s, %s, %s)
+                """, (username, password,gender, phone, gmail, business_type, location, bio, price, filename, helperid))
 
                 # Insert into services and locations if new
                 cursor.execute("INSERT INTO services (service_name) VALUES (%s) ON CONFLICT DO NOTHING", (business_type,))
                 cursor.execute("INSERT INTO locations (location_name) VALUES (%s) ON CONFLICT DO NOTHING", (location,))
                 conn.commit()
 
-                return redirect(url_for('login'))
+                flash("Our team will connect for KYC.", "success")
+                return render_template('signup_business.html')
 
         except Exception as e:
             print(f"Error: {e}")
@@ -285,6 +349,7 @@ def signup_user():
     if request.method == 'POST':
         username = request.form['username'].strip()
         password = request.form['password'].strip()
+        gender = request.form['gender']
         phone = request.form['phone']
         profile_pic_file = request.files.get('profile_pic')
         filename = ''
@@ -300,8 +365,8 @@ def signup_user():
                 return render_template('signup_user.html')  # Show same page with flash message
             else:
                 try:
-                    cursor.execute("INSERT INTO users (username, password, account_type, phone, profile_pic) VALUES (%s, %s, %s, %s, %s)", 
-                                (username, password, 'user', phone, filename))
+                    cursor.execute("INSERT INTO users (username, password, gender, account_type, phone, profile_pic) VALUES (%s, %s, %s,%s, %s, %s)", 
+                                (username, password,gender, 'user', phone, filename))
                     conn.commit()
                     return redirect(url_for('login'))
                 except psycopg2.IntegrityError:
@@ -309,7 +374,7 @@ def signup_user():
     return render_template('signup_user.html', error=error)
 
 @app.route('/profile')
-@app.route('/profile/<username>')
+@app.route('/profile/<name>')
 def profile(username=None):
     if username is None:
         if 'username' not in session:
@@ -325,7 +390,7 @@ def profile(username=None):
 
         if not user:
             flash("User not found.")
-            return redirect(url_for('home'))
+            return redirect(url_for('login'))
 
         # Feedback for average rating
         cursor.execute("SELECT * FROM feedback WHERE to_user = %s", (username,))
@@ -837,12 +902,6 @@ def delete_rating(username):
 
     flash("Your rating was deleted.")
     return redirect(url_for('profile', username=username))
-
-@app.route('/logout')
-def logout():
-    session.pop('username', None)
-    flash('You have been logged out.', 'info')
-    return redirect(url_for('login'))
 
 
 if __name__ == '__main__':
