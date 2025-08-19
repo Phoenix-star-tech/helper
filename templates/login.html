@@ -15,7 +15,7 @@
 
         body {
             font-family: 'Arial', sans-serif;
-            background-color: #f4f7f6;
+            background-color: #e8e8e8;
             display: flex;
             justify-content: center;
             align-items: center;
@@ -24,10 +24,10 @@
         }
 
         .login-container {
-            background-color: #fff;
-            padding: 30px;
-            border-radius: 8px;
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            background-color: #FAF1E0;
+            padding: 100px;
+            border-radius: 40px;
+            box-shadow: 0 4px 18px rgba(0, 0, 0, 0.1);
             width: 100%;
             max-width: 400px;
             text-align: center;
@@ -35,7 +35,16 @@
 
         h2 {
             margin-bottom: 20px;
-            color: #333;
+            color: #F1862f;
+            font-size: 49px;
+        }
+
+        h4{
+            color: #F1862f;
+            font-size: 15px;
+            margin-top: -16px;
+            margin-left: 71px;
+
         }
 
         label {
@@ -45,27 +54,41 @@
             font-weight: bold;
         }
 
-        input[type="text"], input[type="password"] {
-            width: 100%;
-            padding: 10px;
-            margin-bottom: 15px;
+        .user1 {
+            width: 130%;
+            padding: 10px 20px;
+            margin-bottom: 20px;
+            margin-top: 30px;
+            margin-left: -30px;
             border: 1px solid #ddd;
-            border-radius: 4px;
+            border-radius: 10px;
+            font-size: 16px;
+            outline: none;
+        }
+
+        input[type="password"] {
+            width: 130%;
+            padding: 10px 20px;
+            margin-bottom: 15px;
+            margin-left: -30px;
+            border: 1px solid #ddd;
+            border-radius: 10px;
             font-size: 16px;
             outline: none;
         }
 
         input[type="text"]:focus, input[type="password"]:focus {
-            border-color: #007bff;
+            border-color: #f8fafb;
         }
 
         button {
-            width: 100%;
+            width: 80%;
             padding: 12px;
             background-color: #ff6600;
             color: white;
             border: none;
-            border-radius: 4px;
+            border-radius: 20px;
+            margin-top: 14px;
             font-size: 16px;
             cursor: pointer;
             transition: background-color 0.3s;
@@ -101,7 +124,7 @@
 
         @media (max-width: 480px) {
             .login-container {
-                padding: 20px;
+                padding: 70px;
                 max-width: 90%;
             }
 
@@ -113,13 +136,12 @@
 </head>
 <body>
     <div class="login-container">
-        <h2>Login</h2>
+        <h2>Mr.Helper</h2>
+        <h4>Your home, Our duty</h4>
         <form method="POST">
-            <label for="username">Username:</label>
-            <input type="text" name="username" id="username" required>
+            <input class="user1" type="text" name="username" id="username" placeholder="Username" required>
 
-            <label for="password">Password:</label>
-            <input type="password" name="password" id="password" required>
+            <input type="password" name="password" id="password" placeholder="Password">
 
             <button type="submit">Login</button>
         </form>
