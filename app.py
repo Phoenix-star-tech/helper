@@ -372,9 +372,8 @@ def signup_user():
                 except psycopg2.IntegrityError:
                     error = "An error occurred. Please try again."
     return render_template('signup_user.html', error=error)
-
 @app.route('/profile')
-@app.route('/profile/<name>')
+@app.route('/profile/<username>')
 def profile(username=None):
     if username is None:
         if 'username' not in session:
@@ -384,7 +383,7 @@ def profile(username=None):
     with get_db_connection() as conn:
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-        # User details
+        # Get the target user
         cursor.execute("SELECT * FROM users WHERE username = %s", (username,))
         user = cursor.fetchone()
 
@@ -392,8 +391,8 @@ def profile(username=None):
             flash("User not found.")
             return redirect(url_for('login'))
 
-        # Feedback for average rating
-        cursor.execute("SELECT * FROM feedback WHERE to_user = %s", (username,))
+        # Feedback for average rating (use IDs now)
+        cursor.execute("SELECT * FROM feedback WHERE to_user_id = %s", (user['id'],))
         feedback = cursor.fetchall()
 
         # Rating calculations
@@ -401,13 +400,19 @@ def profile(username=None):
         rating_count = len(feedback)
         average_rating = round(total_rating / rating_count, 1) if rating_count > 0 else None
 
-        # Check if the current user already rated
+        # Check if the current logged-in user has already rated
         has_rated = False
         if 'username' in session and session['username'] != username:
-            cursor.execute("SELECT 1 FROM feedback WHERE to_user = %s AND from_user = %s", (username, session['username']))
-            has_rated = cursor.fetchone() is not None
+            cursor.execute("SELECT id FROM users WHERE username = %s", (session['username'],))
+            session_user = cursor.fetchone()
+            if session_user:
+                cursor.execute("""
+                    SELECT 1 FROM feedback
+                    WHERE to_user_id = %s AND from_user_id = %s
+                """, (user['id'], session_user['id']))
+                has_rated = cursor.fetchone() is not None
 
-        # Reports
+        # Reports (also use ID instead of username if your reports table has user_id)
         cursor.execute("SELECT * FROM reports WHERE reported_user = %s", (username,))
         reports = cursor.fetchall()
 
@@ -415,15 +420,17 @@ def profile(username=None):
         is_owner = session.get('username') == username
         is_admin = session.get('username') == 'adime'
 
-    return render_template('profile.html',
-                           user=user,
-                           feedback=feedback,
-                           average_rating=average_rating,
-                           rating_count=rating_count,
-                           has_rated=has_rated,
-                           reports=reports,
-                           is_owner=is_owner,
-                           is_admin=is_admin)
+    return render_template(
+        'profile.html',
+        user=user,
+        feedback=feedback,
+        average_rating=average_rating,
+        rating_count=rating_count,
+        has_rated=has_rated,
+        reports=reports,
+        is_owner=is_owner,
+        is_admin=is_admin
+    )
 
 @app.route('/edit_profile', methods=['GET', 'POST'])
 def edit_profile():
@@ -476,44 +483,49 @@ def place_order():
         message  = request.form.get('message', 'No message provided')
         image    = request.files.get('image')
 
-        # Save image
+        # Save image if provided
         image_path = None
         if image and allowed_file(image.filename):
             image_path = upload_to_cloudinary(image)
-        # Open a new DB connection
+
         conn = get_db_connection()
         cur  = conn.cursor()
 
+        # Lookup IDs
+        cur.execute("SELECT id FROM services WHERE service_name = %s", (service,))
+        service_id = cur.fetchone()[0]
+
+        cur.execute("SELECT id FROM locations WHERE location_name = %s", (location,))
+        location_id = cur.fetchone()[0]
+
+        cur.execute("SELECT id FROM users WHERE username = %s", (session['username'],))
+        owner_id = cur.fetchone()[0]
+
         # Insert order
         cur.execute(""" 
-            INSERT INTO orders (owner_username, service, location, message)
-            VALUES (%s, (SELECT id FROM services WHERE service_name = %s), %s, %s)
+            INSERT INTO orders (owner_id, service_id, location_id, message, image_path, created_at)
+            VALUES (%s, %s, %s, %s, %s, NOW())
             RETURNING id
-        """, (session['username'], service, location, message))
+        """, (owner_id, service_id, location_id, message, image_path))
         order_id = cur.fetchone()[0]
 
-        # Notify matching providers
+        # Notify providers in that location with matching service type
         cur.execute(""" 
-            SELECT username 
+            SELECT id, fcm_token 
             FROM users 
             WHERE business_type = %s AND location = %s
-        """, (service, location))
-        
-        for (provider,) in cur.fetchall():
+        """, (service, location))  # use 'service' (text) instead of 'service_id' (int)
+
+        for provider_id, token in cur.fetchall():
             link = url_for('order_accept', order_id=order_id)
-
-            # Insert notification into DB
             cur.execute(""" 
-                INSERT INTO notifications (to_user, from_user, order_id, message, link, created_at, is_read)
+                INSERT INTO notifications (to_user_id, from_user_id, order_id, message, link, created_at, is_read)
                 VALUES (%s, %s, %s, %s, %s, NOW(), false)
-            """, (provider, session['username'], order_id, message, link))
+            """, (provider_id, owner_id, order_id, message, link))
 
-            # 🔔 Get FCM token of the provider
-            cur.execute("SELECT fcm_token FROM users WHERE username = %s", (provider,))
-            token_result = cur.fetchone()
-            if token_result and token_result[0]:
+            if token:
                 send_push_notification(
-                    token_result[0],
+                    token,
                     "New Order Available",
                     f"New order from {session['username']} for {service} in {location}"
                 )
@@ -521,74 +533,68 @@ def place_order():
         conn.commit()
         cur.close()
         conn.close()
-
         flash("Order placed and providers notified.")
         return redirect(url_for('home'))
 
-    # GET: show form
+    # GET form
     conn = get_db_connection()
     cur  = conn.cursor(cursor_factory=RealDictCursor)
-
     cur.execute("SELECT service_name FROM services ORDER BY service_name")
     services = cur.fetchall()
-
     cur.execute("SELECT location_name FROM locations ORDER BY location_name")
     locations = cur.fetchall()
-
     cur.close()
     conn.close()
-
     return render_template('order.html', services=services, locations=locations)
+
 
 @app.route('/approve_provider/<int:order_id>', methods=['POST'])
 def approve_provider(order_id):
-    selected_provider = request.form.get('selected_provider')
-    if not selected_provider:
+    selected_provider_id = request.form.get('selected_provider_id')
+    if not selected_provider_id:
         flash("No provider selected.")
         return redirect('/notifications')
 
     conn = get_db_connection()
     cur = conn.cursor()
 
-    # Step 1: Mark approved provider
+    # Approve selected provider
     cur.execute("""
         UPDATE order_acceptance SET final_selected = TRUE 
-        WHERE order_id = %s AND provider_username = %s
-    """, (order_id, selected_provider))
+        WHERE order_id = %s AND provider_id = %s
+    """, (order_id, selected_provider_id))
 
-    # Step 2: Mark other providers as rejected
+    # Reject others
     cur.execute("""
         UPDATE order_acceptance SET accepted = FALSE 
-        WHERE order_id = %s AND provider_username != %s
-    """, (order_id, selected_provider))
+        WHERE order_id = %s AND provider_id != %s
+    """, (order_id, selected_provider_id))
 
-    # Step 3: Notify approved provider
-    cur.execute("""
-        INSERT INTO notifications (to_user, from_user, order_id, message, created_at, is_read)
+    # Get owner_id
+    cur.execute("SELECT owner_id FROM orders WHERE id = %s", (order_id,))
+    owner_id = cur.fetchone()[0]
+
+    # Notify approved provider
+    cur.execute(""" 
+        INSERT INTO notifications (to_user_id, from_user_id, order_id, message, created_at, is_read)
         VALUES (%s, %s, %s, %s, NOW(), FALSE)
-    """, (selected_provider, session['username'], order_id, f"You have been approved for Order {order_id}!"))
+    """, (selected_provider_id, owner_id, order_id, f"You have been approved for Order {order_id}!"))
 
-    # 🔔 Send push notification to the approved provider
-    cur.execute("SELECT fcm_token FROM users WHERE username = %s", (selected_provider,))
-    token_result = cur.fetchone()
-    if token_result and token_result[0]:
-        send_push_notification(
-            token_result[0],
-            "Order Approved",
-            f"You have been approved for Order {order_id}!"
-        )
+    cur.execute("SELECT fcm_token FROM users WHERE id = %s", (selected_provider_id,))
+    token = cur.fetchone()[0]
+    if token:
+        send_push_notification(token, "Order Approved", f"You have been approved for Order {order_id}!")
 
-    # Step 4: Notify rejected providers
+    # Notify rejected providers
     cur.execute("""
-        SELECT provider_username FROM order_acceptance 
-        WHERE order_id = %s AND provider_username != %s
-    """, (order_id, selected_provider))
-    rejected = cur.fetchall()
-    for r in rejected:
-        cur.execute("""
-            INSERT INTO notifications (to_user, from_user, order_id, message, created_at, is_read)
+        SELECT provider_id FROM order_acceptance 
+        WHERE order_id = %s AND provider_id != %s
+    """, (order_id, selected_provider_id))
+    for (reject_id,) in cur.fetchall():
+        cur.execute(""" 
+            INSERT INTO notifications (to_user_id, from_user_id, order_id, message, created_at, is_read)
             VALUES (%s, %s, %s, %s, NOW(), FALSE)
-        """, (r[0], session['username'], order_id, f"Sorry, you were not selected for Order {order_id}."))
+        """, (reject_id, owner_id, order_id, f"Sorry, you were not selected for Order {order_id}."))
 
     conn.commit()
     cur.close()
@@ -596,96 +602,42 @@ def approve_provider(order_id):
     flash("Provider selection finalized.")
     return redirect('/home')
 
+
 @app.route('/order_accept/<int:order_id>', methods=['POST'])
 def order_accept(order_id):
-    provider = session['username']
-
     conn = get_db_connection()
     cur = conn.cursor()
 
-    # Accept the order
+    # Get provider ID
+    cur.execute("SELECT id FROM users WHERE username = %s", (session['username'],))
+    provider_id = cur.fetchone()[0]
+
     cur.execute("""
-        INSERT INTO order_acceptance (order_id, provider_username, accepted)
+        INSERT INTO order_acceptance (order_id, provider_id, accepted)
         VALUES (%s, %s, TRUE)
-        ON CONFLICT (order_id, provider_username) DO NOTHING
-    """, (order_id, provider))
+        ON CONFLICT (order_id, provider_id) DO NOTHING
+    """, (order_id, provider_id))
 
-    # Notify the owner
-    cur.execute("SELECT owner_username FROM orders WHERE id = %s", (order_id,))
-    owner = cur.fetchone()[0]
-    cur.execute("""
-        INSERT INTO notifications (to_user, from_user, order_id, message, created_at, is_read)
+    # Get owner_id
+    cur.execute("SELECT owner_id FROM orders WHERE id = %s", (order_id,))
+    owner_id = cur.fetchone()[0]
+
+    # Notify owner
+    cur.execute(""" 
+        INSERT INTO notifications (to_user_id, from_user_id, order_id, message, created_at, is_read)
         VALUES (%s, %s, %s, %s, NOW(), FALSE)
-    """, (owner, provider, order_id, f"{provider} accepted your order!"))
+    """, (owner_id, provider_id, order_id, f"{session['username']} accepted your order!"))
 
-    # 🔔 Send push notification to the owner
-    cur.execute("SELECT fcm_token FROM users WHERE username = %s", (owner,))
-    token_result = cur.fetchone()
-    if token_result and token_result[0]:
-        send_push_notification(
-            token_result[0],
-            "Order Accepted",
-            f"{provider} accepted your order!"
-        )
+    cur.execute("SELECT fcm_token FROM users WHERE id = %s", (owner_id,))
+    token = cur.fetchone()[0]
+    if token:
+        send_push_notification(token, "Order Accepted", f"{session['username']} accepted your order!")
 
     conn.commit()
     cur.close()
     conn.close()
-
     flash("You accepted the order!")
     return redirect(url_for('notifications'))
-
-@app.route('/order_owners_view/<int:order_id>', methods=['GET', 'POST'])
-def view_accepted_providers(order_id):
-    conn = get_db_connection()
-    cur = conn.cursor()
-
-    if request.method == 'POST':
-        selected = request.form['selected_provider']
-        
-        # Mark selected provider
-        cur.execute("""
-            UPDATE order_acceptance 
-            SET final_selected = TRUE 
-            WHERE order_id = %s AND provider_username = %s
-        """, (order_id, selected))
-        
-        # Reject all others
-        cur.execute("""
-            UPDATE order_acceptance 
-            SET accepted = FALSE 
-            WHERE order_id = %s AND provider_username != %s
-        """, (order_id, selected))
-
-        # Notify selected provider
-        message = f"You have been approved for Order {order_id}!"
-        cur.execute("""
-            INSERT INTO notifications (to_user, from_user, order_id, message, created_at, is_read)
-            VALUES (%s, %s, %s, %s, NOW(), FALSE)
-        """, (selected, session['username'], order_id, message))
-
-        # Notify rejected providers
-        cur.execute("""
-            SELECT provider_username 
-            FROM order_acceptance 
-            WHERE order_id = %s AND provider_username != %s
-        """, (order_id, selected))
-        rejected_providers = [row[0] for row in cur.fetchall()]
-        
-        for rp in rejected_providers:
-            message = f"Sorry, you were not selected for Order {order_id}."
-            cur.execute("""
-                INSERT INTO notifications (to_user, from_user, order_id, message, created_at, is_read)
-                VALUES (%s, %s, %s, %s, NOW(), FALSE)
-            """, (rp, session['username'], order_id, message))
-
-        conn.commit()
-        cur.close()
-        conn.close()
-
-        flash("Provider selection finalized.")
-        return redirect('/home')
-    return "Not Allowed", 405
 
 @app.route('/notifications')
 def notifications():
@@ -695,112 +647,98 @@ def notifications():
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=RealDictCursor)
 
-    # Join with orders + add final selected provider (if any)
     cur.execute("""
     SELECT 
-        n.id, n.from_user, n.order_id, o.owner_username, o.service, o.location, o.message AS order_message, 
-        o.created_at AS order_created_at, n.message, n.created_at AS notif_created_at, n.is_read,
+        n.id, 
+        u_from.username AS from_user, 
+        u_to.username AS to_user, 
+        n.order_id, 
+        s.service_name, 
+        l.location_name, 
+        o.message AS order_message, 
+        o.created_at AS order_created_at, 
+        n.message, 
+        n.created_at AS notif_created_at, 
+        n.is_read,
         (
-            SELECT provider_username 
-            FROM order_acceptance 
-            WHERE order_id = n.order_id AND final_selected = TRUE
+            SELECT u_provider.username
+            FROM order_acceptance oa
+            JOIN users u_provider ON u_provider.id = oa.provider_id
+            WHERE oa.order_id = n.order_id 
+              AND final_selected = TRUE
             LIMIT 1
         ) AS approved_provider
     FROM notifications n
-    JOIN orders o ON o.id = n.order_id
-    WHERE n.to_user = %s
+    JOIN users u_from ON u_from.id = n.from_user_id
+    JOIN users u_to   ON u_to.id   = n.to_user_id
+    JOIN orders o     ON o.id = n.order_id
+    JOIN services s   ON s.id = o.service_id
+    JOIN locations l  ON l.id = o.location_id
+    WHERE n.to_user_id = (
+        SELECT id FROM users WHERE username = %s
+    )
     ORDER BY n.id DESC
     """, (session['username'],))
 
-
     notes = cur.fetchall()
     cur.close()
     conn.close()
-
     return render_template('notification.html', notifications=notes)
 
-@app.route('/api/notifications')
-def api_notifications():
-    if 'username' not in session:
-        return jsonify([])
-
-    conn = get_db_connection()
-    cur = conn.cursor(cursor_factory=RealDictCursor)
-    cur.execute("""
-        SELECT 
-            n.id, n.from_user, n.order_id, o.owner_username, o.service, o.location, o.message AS order_message, 
-            o.created_at AS order_created_at, n.message, n.created_at AS notif_created_at, n.is_read,
-            (
-                SELECT provider_username 
-                FROM order_acceptance 
-                WHERE order_id = n.order_id AND final_selected = TRUE
-                LIMIT 1
-            ) AS approved_provider
-        FROM notifications n
-        JOIN orders o ON o.id = n.order_id
-        WHERE n.to_user = %s
-        ORDER BY n.id DESC
-    """, (session['username'],))
-
-    notes = cur.fetchall()
-    cur.close()
-    conn.close()
-
-    return jsonify(notes)
-
-@app.route('/firebase-messaging-sw.js')
-def service_worker():
-    return send_from_directory('static', 'firebase-messaging-sw.js')
-
-@app.route('/register_token', methods=['POST'])
-def register_token():
+@app.route('/save-token', methods=['POST'])
+def save_token():
+    """Save Firebase token for push notifications"""
     if 'username' not in session:
         return jsonify({'error': 'Not logged in'}), 401
 
     data = request.get_json()
     token = data.get('token')
-
     if not token:
         return jsonify({'error': 'Token is required'}), 400
 
     with get_db_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("UPDATE users SET fcm_token=%s WHERE username=%s", (token, session['username']))
+        cursor.execute("UPDATE users SET fcm_token = %s WHERE username = %s", (token, session['username']))
         conn.commit()
 
     return jsonify({'message': 'Token registered successfully'}), 200
-
-@app.route('/save-token', methods=['POST'])
-def save_token():
-    data = request.json
-    token = data.get('token')
-    user = session.get('username')
-
-    if token and user:
-        with get_db_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("UPDATE users SET fcm_token = %s WHERE username = %s", (token, user))
-            conn.commit()
-        return jsonify({"status": "success"}), 200
-    return jsonify({"status": "error"}), 400
 
 @app.route('/report/<username>', methods=['GET', 'POST'])
 def report(username):
     if 'username' not in session:
         return redirect(url_for('login'))
 
-    if request.method == 'POST':
-        reason = request.form['reason']
-        with get_db_connection() as conn:
-            cursor = conn.cursor()
+    with get_db_connection() as conn:
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+        # Get IDs for both users
+        cursor.execute("SELECT id, username FROM users WHERE username = %s", (username,))
+        to_user = cursor.fetchone()
+
+        cursor.execute("SELECT id, username FROM users WHERE username = %s", (session['username'],))
+        from_user = cursor.fetchone()
+
+        if not to_user or not from_user:
+            flash("User not found.")
+            return redirect(url_for('profile', username=username))
+
+        if request.method == 'POST':
+            reason = request.form['reason']
+
             cursor.execute("""
-                INSERT INTO reports (reported_user, reported_by, reason)
-                VALUES (%s, %s, %s)
-            """, (username, session['username'], reason))
+                INSERT INTO reports (reported_user, reported_by, reason, reported_user_id, reported_by_id)
+                VALUES (%s, %s, %s, %s, %s)
+            """, (
+                to_user['username'],   # old column
+                from_user['username'], # old column
+                reason,
+                to_user['id'],         # new ID column
+                from_user['id']        # new ID column
+            ))
             conn.commit()
 
-        flash('Report submitted successfully!', 'success')
-        return redirect(url_for('profile', username=username))
+            flash('Report submitted successfully!', 'success')
+            return redirect(url_for('profile', username=username))
 
     return render_template('report.html', username=username)
 
@@ -847,7 +785,7 @@ def service(service_name):
                 u.phone,
                 COALESCE(AVG(f.rating), 0) AS avg_rating
             FROM users u
-            LEFT JOIN feedback f ON u.username = f.to_user
+            LEFT JOIN feedback f ON u.id = f.to_user_id
             WHERE u.account_type = 'business' AND u.business_type = %s
             GROUP BY u.username, u.location, u.profile_pic, u.price, u.phone
             ORDER BY avg_rating DESC
@@ -862,47 +800,66 @@ def rate_comment(username):
 
     rating = int(request.form['rating'])
     comment = request.form['comment']
-    from_user = session['username']
 
-    conn = get_db_connection()
-    cur = conn.cursor()
+    with get_db_connection() as conn:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-    # Prevent multiple ratings
-    cur.execute("SELECT * FROM feedback WHERE to_user = %s AND from_user = %s", (username, from_user))
-    if cur.fetchone():
-        conn.close()
-        flash("You have already rated this user.")
-        return redirect(url_for('profile', username=username))
+        # Get IDs for both users
+        cur.execute("SELECT id FROM users WHERE username = %s", (username,))
+        to_user = cur.fetchone()
+        if not to_user:
+            flash("User not found.")
+            return redirect(url_for('profile', username=username))
 
-    # Insert feedback
-    cur.execute(
-        "INSERT INTO feedback (to_user, from_user, rating, comment) VALUES (%s, %s, %s, %s)",
-        (username, from_user, rating, comment)
-    )
+        cur.execute("SELECT id FROM users WHERE username = %s", (session['username'],))
+        from_user = cur.fetchone()
+        if not from_user:
+            flash("Session error: logged-in user not found.")
+            return redirect(url_for('profile', username=username))
 
-    conn.commit()
-    conn.close()
+        # Prevent multiple ratings
+        cur.execute("""
+            SELECT 1 FROM feedback 
+            WHERE to_user_id = %s AND from_user_id = %s
+        """, (to_user['id'], from_user['id']))
+        if cur.fetchone():
+            flash("You have already rated this user.")
+            return redirect(url_for('profile', username=username))
+
+        # Insert feedback
+        cur.execute("""
+            INSERT INTO feedback (to_user_id, from_user_id, rating, comment)
+            VALUES (%s, %s, %s, %s)
+        """, (to_user['id'], from_user['id'], rating, comment))
+
+        conn.commit()
 
     flash("Rating submitted successfully.")
     return redirect(url_for('profile', username=username))
-
 @app.route('/delete_rating/<username>', methods=['POST'])
 def delete_rating(username):
     if 'username' not in session:
         return redirect(url_for('login'))
 
-    current_user = session['username']
+    with get_db_connection() as conn:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-    conn = get_db_connection()
-    cur = conn.cursor()
+        # Get IDs for both users
+        cur.execute("SELECT id FROM users WHERE username = %s", (username,))
+        to_user = cur.fetchone()
 
-    cur.execute("DELETE FROM feedback WHERE to_user = %s AND from_user = %s", (username, current_user))
-    conn.commit()
-    conn.close()
+        cur.execute("SELECT id FROM users WHERE username = %s", (session['username'],))
+        from_user = cur.fetchone()
+
+        if to_user and from_user:
+            cur.execute("""
+                DELETE FROM feedback
+                WHERE to_user_id = %s AND from_user_id = %s
+            """, (to_user['id'], from_user['id']))
+            conn.commit()
 
     flash("Your rating was deleted.")
     return redirect(url_for('profile', username=username))
-
 
 if __name__ == '__main__':
     init_db()
