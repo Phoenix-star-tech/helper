@@ -1,183 +1,143 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Admin Dashboard</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <link rel="stylesheet" href="{{ url_for('static', filename='assets/style.css') }}" />
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Mr. Helper{% endblock %}</title>
+    <style>
+      /* Fullscreen overlay */
+      #loading-overlay {
+          position: fixed;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
+          background: rgba(255, 255, 255, 0.9); /* light background */
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          z-index: 9999;
+          visibility: hidden; /* hidden by default */
+      }
+    
+      /* Spinner Animation */
+      .spinner {
+          border: 8px solid #f3f3f3;
+          border-top: 8px solid #3498db;
+          border-radius: 50%;
+          width: 60px;
+          height: 60px;
+          animation: spin 1s linear infinite;
+      }
+    
+      @keyframes spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+      }
+    </style>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}"> 
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
 </head>
-
-<body class="bg-gray-50">
-<div class="min-h-screen bg-gray-50 p-6">
-  <div class="max-w-7xl mx-auto">
-    <div class="flex items-center justify-between mb-6">
-      <h2 class="text-3xl font-extrabold text-gray-900">Welcome, Admin</h2>
-      <a href="{{ url_for('logout') }}"
-         class="px-4 py-2 bg-red-500 text-white rounded-lg shadow hover:bg-red-600 transition">
-        Logout
-      </a>
+<body>
+    <div class="container">
+        {% block content %}{% endblock %}
     </div>
 
-    <!-- Search -->
-   <!-- Updated Search -->
-<div class="mb-8">
-  <input
-    type="text"
-    id="searchInput"
-    placeholder="Search by username, helper ID, type, or location…"
-    class="w-full md:w-1/2 px-4 py-3 border border-gray-300 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 transition"
-  />
-</div>
-
-<div class="mt-12">
-  <h3 class="text-2xl font-bold text-gray-800 mb-4">Pending KYC Approvals</h3>
-  <div class="space-y-4">
-    {% for kyc in kyc_requests %}
-    <div class="bg-white rounded-lg shadow p-4">
-      <p><strong>Username:</strong> {{ kyc.username }}</p>
-      <p><strong>Helper ID:</strong> {{ kyc.helperid or 'N/A' }}</p>
-      <p><strong>Phone:</strong> {{ kyc.phone }}</p>
-      <p><strong>Gender:</strong>{{ kyc.gender }}</p>
-      <p><strong>Business Type:</strong> {{ kyc.business_type }}</p>
-      <p><strong>Location:</strong> {{ kyc.location }}</p>
-      <div class="flex gap-2 mt-3">
-        <form action="{{ url_for('accept_kyc', username=kyc.username) }}" method="POST">
-          <button type="submit" class="px-3 py-1 bg-green-500 text-white rounded-lg">Accept</button>
-        </form>
-        <form action="{{ url_for('reject_kyc', username=kyc.username) }}" method="POST">
-          <button type="submit" class="px-3 py-1 bg-red-500 text-white rounded-lg">Reject</button>
-        </form>
-      </div>
-    </div>
-    {% endfor %}
-  </div>
-</div>
-
-<!-- Users Table (desktop) -->
-<table id="userTable" class="min-w-full bg-white rounded-lg shadow hidden md:table">
-  <thead class="bg-gray-100 uppercase text-gray-600 text-sm sticky top-0">
-    <tr>
-      <th class="px-6 py-3 text-left">Username</th>
-      <th class="px-6 py-3 text-left">Helper ID</th>
-      <th class="px-6 py-3 text-left">Type</th>
-      <th class="px-6 py-3 text-left">Location</th>
-      <th class="px-6 py-3 text-center">Action</th>
-    </tr>
-  </thead>
-  <tbody>
-    {% for user in users %}
-    <tr class="border-b hover:bg-gray-50">
-      <td class="px-6 py-4">
-        <a href="{{ url_for('profile', username=user.username) }}"
-           class="text-indigo-600 hover:underline font-medium">
-          {{ user.username }}
+    <nav>
+        <a href="{{ url_for('home') }}">
+            <i class="fas fa-home"></i>
+            <span>Home</span>
         </a>
-      </td>
-      <td class="px-6 py-4 text-gray-700 font-mono">{{ user.helperid or 'N/A' }}</td>
-      <td class="px-6 py-4">{{ user.account_type }}</td>
-      <td class="px-6 py-4">{{ user.location or 'N/A' }}</td>
-      <td class="px-6 py-4 text-center">
-        <form action="{{ url_for('delete_user', username=user.username) }}" method="POST"
-              onsubmit="return confirm('Delete {{ user.username }}?');">
-          <button type="submit"
-                  class="px-3 py-1 bg-red-500 text-white rounded-lg hover:bg-red-600 transition">
-            Delete
-          </button>
-        </form>
-      </td>
-    </tr>
-    {% endfor %}
-  </tbody>
-</table>
+        
+        {% if 'username' in session %}
+        <a href="{{ url_for('search') }}">
+            <i class="fas fa-search"></i>
+            <span>Search</span>
+        </a>
+        <a href="{{ url_for('notifications') }}">
+            <i class="fas fa-bell"></i>
+            <span>Notifications</span>
+        </a>
+            <a href="{{ url_for('profile') }}">
+                <i class="fas fa-user"></i>
+                <span>Profile</span>
+            </a>
+        {% else %}
+            <a href="{{ url_for('login') }}">
+                <i class="fas fa-sign-in-alt"></i>
+                <span>Login</span>
+            </a>
+        {% endif %}
+    </nav>
 
-<!-- Mobile Cards -->
-<div class="grid gap-4 md:hidden">
-  {% for user in users %}
-  <div class="bg-white p-4 rounded-lg shadow flex flex-col">
-    <div class="flex justify-between items-center mb-2">
-      <a href="{{ url_for('profile', username=user.username) }}"
-         class="text-lg font-semibold text-indigo-600 hover:underline">
-        {{ user.username }}
-      </a>
-      <form action="{{ url_for('delete_user', username=user.username) }}" method="POST"
-            onsubmit="return confirm('Delete {{ user.username }}?');">
-        <button type="submit"
-                class="px-2 py-1 bg-red-500 text-white rounded-full hover:bg-red-600 transition text-sm">
-          ✕
-        </button>
-      </form>
-    </div>
-    <div class="text-sm text-gray-600"><strong>Helper ID:</strong> {{ user.helperid or 'N/A' }}</div>
-    <div class="text-sm text-gray-600">{{ user.account_type }}</div>
-    <div class="text-sm text-gray-600">{{ user.location or 'N/A' }}</div>
-  </div>
-  {% endfor %}
-</div>
-
-    <!-- Reported Users -->
-    <div class="mt-12">
-      <h3 class="text-2xl font-bold text-gray-800 mb-4">Reported Users</h3>
-      <div class="space-y-4">
-        {% for report in reported_users %}
-        <div class="bg-white rounded-lg shadow p-4">
-          <div class="flex justify-between items-center">
-            <div>
-              <a href="{{ url_for('profile', username=report.reported_user) }}"
-                 class="text-indigo-600 font-medium hover:underline">
-                {{ report.reported_user }}
-              </a>
-              <span class="ml-2 text-sm text-gray-500">({{ report.report_count }} reports)</span>
-            </div>
-            <div class="space-x-2">
-              <button onclick="toggleReasons('reasons-{{ loop.index0 }}')"
-                      class="px-3 py-1 bg-yellow-400 text-white rounded-lg hover:bg-yellow-500 transition text-sm">
-                View Reasons
-              </button>
-              <form action="{{ url_for('delete_user', username=report.reported_user) }}" method="POST"
-                    onsubmit="return confirm('Delete {{ report.reported_user }}?');" class="inline">
-                <button type="submit"
-                        class="px-3 py-1 bg-red-500 text-white rounded-lg hover:bg-red-600 transition text-sm">
-                  Delete
-                </button>
-              </form>
-            </div>
-          </div>
-          <div id="reasons-{{ loop.index0 }}" class="mt-3 p-3 bg-gray-50 rounded-lg border border-gray-200 hidden">
-            <ul class="list-disc list-inside text-gray-700">
-              {% for reason in report.reasons %}
-              <li>{{ reason }}</li>
-              {% endfor %}
-            </ul>
-          </div>
-        </div>
-        {% endfor %}
-      </div>
-    </div>
-  </div>
+    <!-- Loading Overlay -->
+<div id="loading-overlay">
+    <div class="spinner"></div>
 </div>
 
 <script>
-  // Search filter
-  document.getElementById('searchInput').addEventListener('input', function(e) {
-    const filter = e.target.value.toLowerCase();
-    document.querySelectorAll('#userTable tbody tr').forEach(row => {
-      const text = row.innerText.toLowerCase();
-      row.style.display = text.includes(filter) ? '' : 'none';
-    });
-    // mobile cards
-    document.querySelectorAll('.md\\:hidden > div').forEach(card => {
-      const text = card.innerText.toLowerCase();
-      card.style.display = text.includes(filter) ? '' : 'none';
-    });
+  // Show loader before leaving page
+  window.addEventListener("beforeunload", function () {
+      document.getElementById("loading-overlay").style.visibility = "visible";
   });
 
-  // Toggle reasons panels
-  function toggleReasons(id) {
-    const panel = document.getElementById(id);
-    panel.classList.toggle('hidden');
+  // Hide loader when page finishes loading
+  window.addEventListener("load", function () {
+      document.getElementById("loading-overlay").style.visibility = "hidden";
+  });
+</script>
+
+
+    <script src="https://www.gstatic.com/firebasejs/10.11.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.11.0/firebase-messaging-compat.js"></script>
+
+<script>
+  // Your web app's Firebase configuration
+  const firebaseConfig = {
+    apiKey: "AIzaSyDDgDqFYxjIgUCbjQpoL2hkmqg9BTmGT_k",
+    authDomain: "helper-8ec94.firebaseapp.com",
+    projectId: "helper-8ec94",
+    messagingSenderId: "688597413695",
+    appId: "1:688597413695:web:43395b6977f3134169ed8a"
+  };
+
+  firebase.initializeApp(firebaseConfig);
+
+  const messaging = firebase.messaging();
+
+  // Ask for permission and get token
+  function initFirebaseMessagingRegistration() {
+    messaging
+      .requestPermission()
+      .then(() => messaging.getToken())
+      .then((token) => {
+        console.log("FCM Token:", token);
+        // Send token to your Flask backend
+        fetch('/save-token', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ token: token })
+        });
+      })
+      .catch((err) => {
+        console.error("FCM Error:", err);
+      });
+  }
+
+  window.onload = initFirebaseMessagingRegistration;
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register("/static/firebase-messaging-sw.js")
+      .then((registration) => {
+        console.log("Service Worker registered:", registration);
+      })
+      .catch((error) => {
+        console.error("Service Worker registration failed:", error);
+      });
   }
 </script>
+
 </body>
 </html>
