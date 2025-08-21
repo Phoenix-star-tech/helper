@@ -1,11 +1,6 @@
 {% extends 'base.html' %}
 {% block title %}Home - Mr. Helper{% endblock %}
 {% block content %}
-{% if user %}
-  <h2>Welcome back, {{ user.username }}!</h2>
-{% else %}
-  <h2>Welcome to Mr. Helper!</h2>
-{% endif %}
 <div class="search-container">
   <form action="{{ url_for('search') }}" method="GET">
     <input
@@ -23,7 +18,10 @@
   </form>
 </div>
 
-<a href="{{ url_for('place_order', service='default_service') }}" class="order-btn">🛒 Order Services</a>
+<!-- Floating Order Button -->
+<a href="{{ url_for('place_order', service='default_service') }}" class="floating-order-btn">
+  🛒Order Service
+</a>
 
 <h3>Available Services</h3>
 <div class="services-grid">
