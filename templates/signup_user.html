@@ -132,6 +132,37 @@
             }
         }
     </style>
+    <style>
+      /* Fullscreen overlay */
+      #loading-overlay {
+          position: fixed;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
+          background: rgba(255, 255, 255, 0.9); /* light background */
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          z-index: 9999;
+          visibility: hidden; /* hidden by default */
+      }
+    
+      /* Spinner Animation */
+      .spinner {
+          border: 8px solid #f3f3f3;
+          border-top: 8px solid #3498db;
+          border-radius: 50%;
+          width: 60px;
+          height: 60px;
+          animation: spin 1s linear infinite;
+      }
+    
+      @keyframes spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+      }
+    </style>
 </head>
 <body>
     <div class="signup-container">
@@ -184,6 +215,11 @@
         <div class="error">{{ error }}</div>
         {% endif %}
     </div>
+<!-- Loading Overlay -->
+<div id="loading-overlay">
+    <div class="spinner"></div>
+</div>
+
 
     <script>
         document.getElementById("imageInput").addEventListener("change", function () {
@@ -199,5 +235,28 @@
             }
         });
     </script>
+<script>
+  const loader = document.getElementById("loading-overlay");
+
+  // Show loader before leaving page
+  window.addEventListener("beforeunload", () => {
+      loader.style.visibility = "visible";
+  });
+
+  // Hide loader when page fully loads
+  window.addEventListener("load", () => {
+      loader.style.visibility = "hidden";
+  });
+
+  // Handle when navigating with back/forward buttons (bfcache restore)
+  window.addEventListener("pageshow", (event) => {
+      loader.style.visibility = "hidden";  // Ensure loader is hidden when page is restored
+  });
+
+  window.addEventListener("pagehide", () => {
+      loader.style.visibility = "visible"; // Show loader when leaving
+  });
+</script>
+
 </body>
 </html>
