@@ -64,6 +64,16 @@ def upload_to_cloudinary(file_storage):
     )
     return result["secure_url"]
 
+@app.context_processor
+def inject_user():
+    if 'username' in session:
+        with get_db_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                cursor.execute("SELECT * FROM users WHERE username = %s", (session['username'],))
+                user = cursor.fetchone()
+                return dict(user=user)
+    return dict(user=None)
+
 def get_db_connection():
     conn = psycopg2.connect(DATABASE_URL)
     conn.autocommit = True
@@ -145,7 +155,8 @@ def login():
                 session['username'] = username
                 return redirect(url_for('home'))
             else:
-                return "Invalid username or password"
+                flash("Invalid username or password", "danger")
+                return render_template('login.html')
 
     # Not logged in and not posting — show login page
     return render_template('login.html')
@@ -153,7 +164,6 @@ def login():
 @app.route('/logout')
 def logout():
     session.pop('username', None)
-    flash('You have been logged out.', 'info')
     return redirect(url_for('login'))
 
 @app.route('/home')
@@ -474,6 +484,10 @@ def edit_profile():
             return redirect(url_for('home'))
 
     return render_template('edit_profile.html', user=user)
+
+@app.route('/products')
+def products():
+    return render_template('products.html')
 
 @app.route('/order', methods=['GET', 'POST'])
 def place_order():
