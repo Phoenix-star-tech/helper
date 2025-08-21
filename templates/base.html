@@ -1,93 +1,301 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Mr. Helper{% endblock %}</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}"> 
-    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Mr. Helper{% endblock %}</title>
+  <style>
+    /* Fullscreen overlay */
+    #loading-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(255, 255, 255, 0.9);
+      /* light background */
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 9999;
+      visibility: hidden;
+      /* hidden by default */
+    }
+
+    /* Spinner Animation */
+    .spinner {
+      border: 8px solid #f3f3f3;
+      border-top: 8px solid #3498db;
+      border-radius: 50%;
+      width: 60px;
+      height: 60px;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      0% {
+        transform: rotate(0deg);
+      }
+
+      100% {
+        transform: rotate(360deg);
+      }
+    }
+  </style>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
 </head>
+
 <body>
-    <div class="container">
-        {% block content %}{% endblock %}
+  <nav class="topNav">
+  {% if 'username' in session %}
+  <div class="topLeft">
+    <div class="topPicture" onclick="toggleMenu()">
+      {% if user and user.profile_pic %}
+      <img src="{{ user.profile_pic or url_for('static', filename='default-avatar.png') }}" alt="Profile Picture">
+      {% else %}
+      <img src="{{ url_for('static', filename='default_profile.png') }}" alt="Default Profile Picture">
+      {% endif %}
+
+      <!-- Dropdown -->
+      <div class="dropdown-menu" id="profileMenu">
+        <a href="{{ url_for('profile', username=user.username) }}">Profile</a>
+        <a href="{{ url_for('logout') }}">Logout</a>
+      </div>
     </div>
+    <div class="user-info">
+      <h2>{{ user.username }}</h2>
+      {% if user and user.location %}
+      <p class="user-location">{{ user.location }}</p>
+      {% endif %}
+    </div>
+  </div>
 
-    <nav>
-        <a href="{{ url_for('home') }}">
-            <i class="fas fa-home"></i>
-            <span>Home</span>
-        </a>
-        
-        {% if 'username' in session %}
-        <a href="{{ url_for('search') }}">
-            <i class="fas fa-search"></i>
-            <span>Search</span>
-        </a>
-        <a href="{{ url_for('notifications') }}">
-            <i class="fas fa-bell"></i>
-            <span>Notifications</span>
-        </a>
-            <a href="{{ url_for('profile') }}">
-                <i class="fas fa-user"></i>
-                <span>Profile</span>
-            </a>
-        {% else %}
-            <a href="{{ url_for('login') }}">
-                <i class="fas fa-sign-in-alt"></i>
-                <span>Login</span>
-            </a>
-        {% endif %}
-    </nav>
-    <script src="https://www.gstatic.com/firebasejs/10.11.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.11.0/firebase-messaging-compat.js"></script>
+  <!-- Right side icons -->
+  <div class="topRight">
+  <!-- Notifications -->
+  <a href="{{ url_for('notifications') }}" class="notification">
+    <i class="fas fa-bell"></i>
+  </a>
+  <!-- Helpline -->
+  
+<a href="tel:+919381728045" class="helpline">
+  <i class="fas fa-phone"></i>
+</a>
 
-<script>
-  // Your web app's Firebase configuration
-  const firebaseConfig = {
-    apiKey: "AIzaSyDDgDqFYxjIgUCbjQpoL2hkmqg9BTmGT_k",
-    authDomain: "helper-8ec94.firebaseapp.com",
-    projectId: "helper-8ec94",
-    messagingSenderId: "688597413695",
-    appId: "1:688597413695:web:43395b6977f3134169ed8a"
-  };
+</div>
 
-  firebase.initializeApp(firebaseConfig);
+  {% else %}
+  <h2>Choose Your Account Type</h2>
+  {% endif %}
+</nav>
 
-  const messaging = firebase.messaging();
+  <br><br>
+  <div class="container">
+    {% block content %}{% endblock %}
+  </div>
 
-  // Ask for permission and get token
-  function initFirebaseMessagingRegistration() {
-    messaging
-      .requestPermission()
-      .then(() => messaging.getToken())
-      .then((token) => {
-        console.log("FCM Token:", token);
-        // Send token to your Flask backend
-        fetch('/save-token', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({ token: token })
+  <nav>
+    {% if 'username' in session %}
+    <a href="{{ url_for('home') }}">
+      <i class="fas fa-home"></i>
+    </a>
+
+    <a href="{{ url_for('search') }}">
+      <i class="fas fa-search"></i>
+    </a>
+    <a href="{{ url_for('products') }}">
+      <i class="fas fa-cube"></i>
+    </a>
+    <a href="{{ url_for('profile') }}">
+      <i class="fas fa-user"></i>
+    </a>
+    {% else %}
+    <a href="{{ url_for('login') }}">
+      <i class="fas fa-sign-in-alt"></i>
+      <span>Login</span>
+    </a>
+    {% endif %}
+  </nav>
+  <div id="toastStack" class="toast-stack">
+    {# Render Flask flashed messages if any #}
+    {% with messages = get_flashed_messages(with_categories=True) %}
+    {% if messages %}
+    {% for category, message in messages %}
+    {% set cls = 'toast--info' %}
+    {% if category in ['success','error','warning','info'] %}
+    {% set cls = 'toast--' ~ category %}
+    {% endif %}
+    <div class="toast {{ cls }}">
+      <span class="toast__dot"></span>
+      <div class="toast__content">
+        <div class="toast__title">
+          {{ category|capitalize if category else 'Notice' }}
+        </div>
+        <div class="toast__msg">{{ message }}</div>
+      </div>
+      <button class="toast__close" aria-label="Close" onclick="this.parentElement.remove()">×</button>
+    </div>
+    {% endfor %}
+    {% endif %}
+    {% endwith %}
+  </div>
+
+  <!-- Loading Overlay -->
+  <div id="loading-overlay">
+    <div class="spinner"></div>
+  </div>
+
+  <script>
+    function toggleMenu() {
+      document.getElementById("profileMenu").classList.toggle("show-menu");
+    }
+
+    // Close menu if clicked outside
+    window.addEventListener("click", function (e) {
+      if (!e.target.closest(".topPicture")) {
+        document.getElementById("profileMenu").classList.remove("show-menu");
+      }
+    });
+  </script>
+  <script>
+    // Programmatic toast (for JS-detected failures)
+    function showToast(message, type = 'info', title = null, autoHideMs = 5000) {
+      const stack = document.getElementById('toastStack');
+      const wrapper = document.createElement('div');
+      wrapper.className = `toast toast--${type}`;
+
+      const dot = document.createElement('span');
+      dot.className = 'toast__dot';
+
+      const content = document.createElement('div');
+      content.className = 'toast__content';
+
+      const heading = document.createElement('div');
+      heading.className = 'toast__title';
+      heading.textContent = title || type.charAt(0).toUpperCase() + type.slice(1);
+
+      const msg = document.createElement('div');
+      msg.className = 'toast__msg';
+      msg.textContent = message;
+
+      const close = document.createElement('button');
+      close.className = 'toast__close';
+      close.setAttribute('aria-label', 'Close');
+      close.textContent = '×';
+      close.addEventListener('click', () => wrapper.remove());
+
+      content.appendChild(heading);
+      content.appendChild(msg);
+      wrapper.appendChild(dot);
+      wrapper.appendChild(content);
+      wrapper.appendChild(close);
+      stack.appendChild(wrapper);
+
+      if (autoHideMs && autoHideMs > 0) {
+        setTimeout(() => wrapper.remove(), autoHideMs);
+      }
+    }
+
+    // Catch generic JS errors & promise rejections → show error toast
+    window.addEventListener('error', (e) => {
+      showToast('Something went wrong while loading the page.', 'error', 'Error');
+    });
+    window.addEventListener('unhandledrejection', (e) => {
+      showToast('A background action failed. Please try again.', 'warning', 'Heads up');
+    });
+
+    // Optional: if your loader might get stuck, auto clear after 8s and show toast
+    // Update '#loading-overlay' to your actual loader element id
+    window.addEventListener('load', () => {
+      const loader = document.getElementById('loading-overlay');
+      if (!loader) return;
+      // Safety timeout: if still visible after 8s, hide and alert
+      setTimeout(() => {
+        const isVisible = loader.style.visibility !== 'hidden' && getComputedStyle(loader).visibility !== 'hidden';
+        if (isVisible) {
+          loader.style.visibility = 'hidden';
+          showToast('We had trouble finishing the load. Some data may be cached.', 'warning', 'Slow Connection');
+        }
+      }, 8000);
+    });
+  </script>
+
+  <script>
+    const loader = document.getElementById("loading-overlay");
+
+    // Show loader before leaving page
+    window.addEventListener("beforeunload", () => {
+      loader.style.visibility = "visible";
+    });
+
+    // Hide loader when page fully loads
+    window.addEventListener("load", () => {
+      loader.style.visibility = "hidden";
+    });
+
+    // Handle when navigating with back/forward buttons (bfcache restore)
+    window.addEventListener("pageshow", (event) => {
+      loader.style.visibility = "hidden";  // Ensure loader is hidden when page is restored
+    });
+
+    window.addEventListener("pagehide", () => {
+      loader.style.visibility = "visible"; // Show loader when leaving
+    });
+  </script>
+
+  <script src="https://www.gstatic.com/firebasejs/10.11.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.11.0/firebase-messaging-compat.js"></script>
+
+  <script>
+    // Your web app's Firebase configuration
+    const firebaseConfig = {
+      apiKey: "AIzaSyDDgDqFYxjIgUCbjQpoL2hkmqg9BTmGT_k",
+      authDomain: "helper-8ec94.firebaseapp.com",
+      projectId: "helper-8ec94",
+      messagingSenderId: "688597413695",
+      appId: "1:688597413695:web:43395b6977f3134169ed8a"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+
+    const messaging = firebase.messaging();
+
+    // Ask for permission and get token
+    function initFirebaseMessagingRegistration() {
+      messaging
+        .requestPermission()
+        .then(() => messaging.getToken())
+        .then((token) => {
+          console.log("FCM Token:", token);
+          // Send token to your Flask backend
+          fetch('/save-token', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ token: token })
+          });
+        })
+        .catch((err) => {
+          console.error("FCM Error:", err);
         });
-      })
-      .catch((err) => {
-        console.error("FCM Error:", err);
-      });
-  }
+    }
 
-  window.onload = initFirebaseMessagingRegistration;
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register("/static/firebase-messaging-sw.js")
-      .then((registration) => {
-        console.log("Service Worker registered:", registration);
-      })
-      .catch((error) => {
-        console.error("Service Worker registration failed:", error);
-      });
-  }
-</script>
+    window.onload = initFirebaseMessagingRegistration;
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register("/static/firebase-messaging-sw.js")
+        .then((registration) => {
+          console.log("Service Worker registered:", registration);
+        })
+        .catch((error) => {
+          console.error("Service Worker registration failed:", error);
+        });
+    }
+  </script>
 
 </body>
+
 </html>
