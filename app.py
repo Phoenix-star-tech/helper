@@ -65,14 +65,14 @@ def upload_to_cloudinary(file_storage):
     return result["secure_url"]
 
 @app.context_processor
-def inject_user():
+def inject_logged_in_user():
     if 'username' in session:
         with get_db_connection() as conn:
-            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
-                cursor.execute("SELECT * FROM users WHERE username = %s", (session['username'],))
-                user = cursor.fetchone()
-                return dict(user=user)
-    return dict(user=None)
+            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cursor.execute("SELECT * FROM users WHERE username = %s", (session['username'],))
+            logged_in_user = cursor.fetchone()
+            return dict(logged_in_user=logged_in_user)
+    return dict(logged_in_user=None)
 
 def get_db_connection():
     conn = psycopg2.connect(DATABASE_URL)
@@ -382,57 +382,60 @@ def signup_user():
                 except psycopg2.IntegrityError:
                     error = "An error occurred. Please try again."
     return render_template('signup_user.html', error=error)
+
 @app.route('/profile')
 @app.route('/profile/<username>')
 def profile(username=None):
-    if username is None:
-        if 'username' not in session:
-            return redirect(url_for('login'))
-        username = session['username']
+    if 'username' not in session:
+        return redirect(url_for('login'))
 
+    # Logged-in user (always from session)
     with get_db_connection() as conn:
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cursor.execute("SELECT * FROM users WHERE username = %s", (session['username'],))
+        logged_in_user = cursor.fetchone()
 
-        # Get the target user
+        # Target profile (could be yourself or another user)
+        if username is None:
+            username = session['username']
         cursor.execute("SELECT * FROM users WHERE username = %s", (username,))
-        user = cursor.fetchone()
+        profile_user = cursor.fetchone()
 
-        if not user:
+        if not profile_user:
             flash("User not found.")
             return redirect(url_for('login'))
 
-        # Feedback for average rating (use IDs now)
-        cursor.execute("SELECT * FROM feedback WHERE to_user_id = %s", (user['id'],))
+        # Feedback for average rating
+        cursor.execute("SELECT * FROM feedback WHERE to_user_id = %s", (profile_user['id'],))
         feedback = cursor.fetchall()
-
-        # Rating calculations
         total_rating = sum([fb['rating'] for fb in feedback])
         rating_count = len(feedback)
         average_rating = round(total_rating / rating_count, 1) if rating_count > 0 else None
 
-        # Check if the current logged-in user has already rated
+        # Has logged-in user already rated this profile?
         has_rated = False
-        if 'username' in session and session['username'] != username:
+        if session['username'] != username:
             cursor.execute("SELECT id FROM users WHERE username = %s", (session['username'],))
             session_user = cursor.fetchone()
             if session_user:
                 cursor.execute("""
                     SELECT 1 FROM feedback
                     WHERE to_user_id = %s AND from_user_id = %s
-                """, (user['id'], session_user['id']))
+                """, (profile_user['id'], session_user['id']))
                 has_rated = cursor.fetchone() is not None
 
-        # Reports (also use ID instead of username if your reports table has user_id)
+        # Reports
         cursor.execute("SELECT * FROM reports WHERE reported_user = %s", (username,))
         reports = cursor.fetchall()
 
         # Ownership and admin check
-        is_owner = session.get('username') == username
-        is_admin = session.get('username') == 'adime'
+        is_owner = session['username'] == username
+        is_admin = session['username'] == 'adime'
 
     return render_template(
         'profile.html',
-        user=user,
+        logged_in_user=logged_in_user,   # ✅ always the session user
+        profile_user=profile_user,       # ✅ profile being visited
         feedback=feedback,
         average_rating=average_rating,
         rating_count=rating_count,
