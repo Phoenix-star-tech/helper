@@ -1,103 +1,297 @@
-{% extends 'base.html' %}
-{% block title %}Home - Mr. Helper{% endblock %}
-{% block content %}
-<div class="search-container">
-  <form action="{{ url_for('search') }}" method="GET">
-    <input
-      type="text"
-      id="search-box"
-      name="q"
-      placeholder="Search services..."
-      autocomplete="off"
-      required
-    />
-    <button type="submit">
-      <img src="{{ url_for('static', filename='assets/search-icon.png') }}" alt="Search" />
-    </button>
-    <div id="search-suggestions" class="suggestions-box"></div>
-  </form>
-</div>
+<!DOCTYPE html>
+<html lang="en">
 
-<!-- Floating Order Button -->
-<a href="{{ url_for('place_order', service='default_service') }}" class="floating-order-btn">
-  🛒Order Service
-</a>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Mr. Helper{% endblock %}</title>
+  <style>
+    /* Fullscreen overlay */
+    #loading-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(255, 255, 255, 0.9);
+      /* light background */
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 9999;
+      visibility: hidden;
+      /* hidden by default */
+    }
 
-<h3>Available Services</h3>
-<div class="services-grid">
-  {% for service in services %}
-    <a class="service_box" href="{{ url_for('service', service_name=service) }}">
-      <img class="service_img" src="{{ url_for('static', filename='assets/' + service_images[service]) }}" alt="{{ service }}" />
-      <span>{{ service }}</span>
+    /* Spinner Animation */
+    .spinner {
+      border: 8px solid #f3f3f3;
+      border-top: 8px solid #3498db;
+      border-radius: 50%;
+      width: 60px;
+      height: 60px;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      0% {
+        transform: rotate(0deg);
+      }
+
+      100% {
+        transform: rotate(360deg);
+      }
+    }
+  </style>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+</head>
+
+<body>
+  <nav class="topNav">
+    {% if logged_in_user %}
+    <div class="topLeft">
+      <div class="topPicture" onclick="toggleMenu()">
+        {% if logged_in_user.profile_pic %}
+        <img src="{{ logged_in_user.profile_pic }}" alt="Profile Picture">
+        {% else %}
+        <img src="{{ url_for('static', filename='default_profile.png') }}" alt="Default Profile Picture">
+        {% endif %}
+
+        <div class="dropdown-menu" id="profileMenu">
+          <a href="{{ url_for('profile', username=logged_in_user.username) }}">Profile</a>
+          <a href="{{ url_for('logout') }}">Logout</a>
+        </div>
+      </div>
+
+      <div class="user-info">
+        <h2>{{ logged_in_user.username }}</h2>
+        {% if logged_in_user.location %}
+        <p class="user-location">{{ logged_in_user.location }}</p>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Right side icons -->
+    <div class="topRight">
+      <a href="{{ url_for('notifications') }}" class="notification">
+        <i class="fas fa-bell"></i>
+      </a>
+      <a href="tel:+919381728045" class="helpline">
+        <i class="fas fa-phone"></i>
+      </a>
+    </div>
+    {% else %}
+    <h2>Choose Your Account type</h2>
+    {% endif %}
+  </nav>
+
+  <br><br>
+  <div class="container">
+    {% block content %}{% endblock %}
+  </div>
+
+  <br><br><br>
+  <nav>
+    {% if 'username' in session %}
+    <a href="{{ url_for('home') }}">
+      <i class="fas fa-home"></i>
     </a>
-  {% endfor %}
-</div>
-<script>
-  const searchBox = document.getElementById("search-box");
-  const suggestionsBox = document.getElementById("search-suggestions");
 
-  const placeholders = [
-    "Search for House Cleaning...",
-    "Search for Electrician...",
-    "Search for username...",
-    "Search for location...",
-    "Search for Motor Repair...",
-    "Search for Kitchen Cleaning...",
-  ];
+    <a href="{{ url_for('search') }}">
+      <i class="fas fa-search"></i>
+    </a>
+    <a href="{{ url_for('products') }}">
+      <i class="fas fa-cube"></i>
+    </a>
+    <a href="{{ url_for('profile') }}">
+      <i class="fas fa-user"></i>
+    </a>
+    {% else %}
+    <a href="{{ url_for('login') }}">
+      <i class="fas fa-sign-in-alt"></i>
+      <span>Login</span>
+    </a>
+    {% endif %}
+  </nav>
+  <div id="toastStack" class="toast-stack">
+    {# Render Flask flashed messages if any #}
+    {% with messages = get_flashed_messages(with_categories=True) %}
+    {% if messages %}
+    {% for category, message in messages %}
+    {% set cls = 'toast--info' %}
+    {% if category in ['success','error','warning','info'] %}
+    {% set cls = 'toast--' ~ category %}
+    {% endif %}
+    <div class="toast {{ cls }}">
+      <span class="toast__dot"></span>
+      <div class="toast__content">
+        <div class="toast__title">
+          {{ category|capitalize if category else 'Notice' }}
+        </div>
+        <div class="toast__msg">{{ message }}</div>
+      </div>
+      <button class="toast__close" aria-label="Close" onclick="this.parentElement.remove()">×</button>
+    </div>
+    {% endfor %}
+    {% endif %}
+    {% endwith %}
+  </div>
 
-  // Rotating placeholder
-  let currentPlaceholder = 0;
-  setInterval(() => {
-    searchBox.setAttribute("placeholder", placeholders[currentPlaceholder]);
-    currentPlaceholder = (currentPlaceholder + 1) % placeholders.length;
-  }, 2000);
+  <!-- Loading Overlay -->
+  <div id="loading-overlay">
+    <div class="spinner"></div>
+  </div>
 
-  // Show suggestions on input
-  searchBox.addEventListener("input", function () {
-    const query = this.value.trim();
-
-    if (!query) {
-      suggestionsBox.style.display = "none";
-      suggestionsBox.innerHTML = "";
-      return;
+  <script>
+    function toggleMenu() {
+      document.getElementById("profileMenu").classList.toggle("show-menu");
     }
 
-    fetch(`/suggest?term=${encodeURIComponent(query)}`)
-      .then((res) => res.json())
-      .then((suggestions) => {
-        suggestionsBox.innerHTML = "";
+    // Close menu if clicked outside
+    window.addEventListener("click", function (e) {
+      if (!e.target.closest(".topPicture")) {
+        document.getElementById("profileMenu").classList.remove("show-menu");
+      }
+    });
+  </script>
+  <script>
+    // Programmatic toast (for JS-detected failures)
+    function showToast(message, type = 'info', title = null, autoHideMs = 5000) {
+      const stack = document.getElementById('toastStack');
+      const wrapper = document.createElement('div');
+      wrapper.className = `toast toast--${type}`;
 
-        if (suggestions.length === 0) {
-          suggestionsBox.style.display = "none";
-          return;
+      const dot = document.createElement('span');
+      dot.className = 'toast__dot';
+
+      const content = document.createElement('div');
+      content.className = 'toast__content';
+
+      const heading = document.createElement('div');
+      heading.className = 'toast__title';
+      heading.textContent = title || type.charAt(0).toUpperCase() + type.slice(1);
+
+      const msg = document.createElement('div');
+      msg.className = 'toast__msg';
+      msg.textContent = message;
+
+      const close = document.createElement('button');
+      close.className = 'toast__close';
+      close.setAttribute('aria-label', 'Close');
+      close.textContent = '×';
+      close.addEventListener('click', () => wrapper.remove());
+
+      content.appendChild(heading);
+      content.appendChild(msg);
+      wrapper.appendChild(dot);
+      wrapper.appendChild(content);
+      wrapper.appendChild(close);
+      stack.appendChild(wrapper);
+
+      if (autoHideMs && autoHideMs > 0) {
+        setTimeout(() => wrapper.remove(), autoHideMs);
+      }
+    }
+
+    // Catch generic JS errors & promise rejections → show error toast
+    window.addEventListener('error', (e) => {
+      showToast('Something went wrong while loading the page.', 'error', 'Error');
+    });
+    window.addEventListener('unhandledrejection', (e) => {
+      showToast('A background action failed. Please try again.', 'warning', 'Heads up');
+    });
+
+    // Optional: if your loader might get stuck, auto clear after 8s and show toast
+    // Update '#loading-overlay' to your actual loader element id
+    window.addEventListener('load', () => {
+      const loader = document.getElementById('loading-overlay');
+      if (!loader) return;
+      // Safety timeout: if still visible after 8s, hide and alert
+      setTimeout(() => {
+        const isVisible = loader.style.visibility !== 'hidden' && getComputedStyle(loader).visibility !== 'hidden';
+        if (isVisible) {
+          loader.style.visibility = 'hidden';
+          showToast('We had trouble finishing the load. Some data may be cached.', 'warning', 'Slow Connection');
         }
+      }, 8000);
+    });
+  </script>
 
-        suggestionsBox.style.display = "block"; // ✅ SHOW suggestions box
+  <script>
+    const loader = document.getElementById("loading-overlay");
 
-        suggestions.forEach((item) => {
-          const div = document.createElement("div");
-          div.className = "suggestion-item";
-          div.textContent = item;
-          div.onclick = () => {
-            searchBox.value = item;
-            suggestionsBox.style.display = "none"; // ✅ HIDE on select
-            suggestionsBox.innerHTML = "";
-          };
-          suggestionsBox.appendChild(div);
+    // Show loader before leaving page
+    window.addEventListener("beforeunload", () => {
+      loader.style.visibility = "visible";
+    });
+
+    // Hide loader when page fully loads
+    window.addEventListener("load", () => {
+      loader.style.visibility = "hidden";
+    });
+
+    // Handle when navigating with back/forward buttons (bfcache restore)
+    window.addEventListener("pageshow", (event) => {
+      loader.style.visibility = "hidden";  // Ensure loader is hidden when page is restored
+    });
+
+    window.addEventListener("pagehide", () => {
+      loader.style.visibility = "visible"; // Show loader when leaving
+    });
+  </script>
+
+  <script src="https://www.gstatic.com/firebasejs/10.11.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.11.0/firebase-messaging-compat.js"></script>
+
+  <script>
+    // Your web app's Firebase configuration
+    const firebaseConfig = {
+      apiKey: "AIzaSyDDgDqFYxjIgUCbjQpoL2hkmqg9BTmGT_k",
+      authDomain: "helper-8ec94.firebaseapp.com",
+      projectId: "helper-8ec94",
+      messagingSenderId: "688597413695",
+      appId: "1:688597413695:web:43395b6977f3134169ed8a"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+
+    const messaging = firebase.messaging();
+
+    // Ask for permission and get token
+    function initFirebaseMessagingRegistration() {
+      messaging
+        .requestPermission()
+        .then(() => messaging.getToken())
+        .then((token) => {
+          console.log("FCM Token:", token);
+          // Send token to your Flask backend
+          fetch('/save-token', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ token: token })
+          });
+        })
+        .catch((err) => {
+          console.error("FCM Error:", err);
         });
-      })
-      .catch(() => {
-        suggestionsBox.innerHTML = "";
-        suggestionsBox.style.display = "none";
-      });
-  });
-
-  // Hide suggestions when clicking outside
-  document.addEventListener("click", (e) => {
-    if (!suggestionsBox.contains(e.target) && e.target !== searchBox) {
-      suggestionsBox.innerHTML = "";
-      suggestionsBox.style.display = "none";
     }
-  });
-</script>
-{% endblock %}
+
+    window.onload = initFirebaseMessagingRegistration;
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register("/static/firebase-messaging-sw.js")
+        .then((registration) => {
+          console.log("Service Worker registered:", registration);
+        })
+        .catch((error) => {
+          console.error("Service Worker registration failed:", error);
+        });
+    }
+  </script>
+
+</body>
+
+</html>
