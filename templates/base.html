@@ -50,47 +50,42 @@
 
 <body>
   <nav class="topNav">
-  {% if 'username' in session %}
-  <div class="topLeft">
-    <div class="topPicture" onclick="toggleMenu()">
-      {% if user and user.profile_pic %}
-      <img src="{{ user.profile_pic or url_for('static', filename='default-avatar.png') }}" alt="Profile Picture">
-      {% else %}
-      <img src="{{ url_for('static', filename='default_profile.png') }}" alt="Default Profile Picture">
-      {% endif %}
+    {% if logged_in_user %}
+    <div class="topLeft">
+      <div class="topPicture" onclick="toggleMenu()">
+        {% if logged_in_user.profile_pic %}
+        <img src="{{ logged_in_user.profile_pic }}" alt="Profile Picture">
+        {% else %}
+        <img src="{{ url_for('static', filename='default_profile.png') }}" alt="Default Profile Picture">
+        {% endif %}
 
-      <!-- Dropdown -->
-      <div class="dropdown-menu" id="profileMenu">
-        <a href="{{ url_for('profile', username=user.username) }}">Profile</a>
-        <a href="{{ url_for('logout') }}">Logout</a>
+        <div class="dropdown-menu" id="profileMenu">
+          <a href="{{ url_for('profile', username=logged_in_user.username) }}">Profile</a>
+          <a href="{{ url_for('logout') }}">Logout</a>
+        </div>
+      </div>
+
+      <div class="user-info">
+        <h2>{{ logged_in_user.username }}</h2>
+        {% if logged_in_user.location %}
+        <p class="user-location">{{ logged_in_user.location }}</p>
+        {% endif %}
       </div>
     </div>
-    <div class="user-info">
-      <h2>{{ user.username }}</h2>
-      {% if user and user.location %}
-      <p class="user-location">{{ user.location }}</p>
-      {% endif %}
+
+    <!-- Right side icons -->
+    <div class="topRight">
+      <a href="{{ url_for('notifications') }}" class="notification">
+        <i class="fas fa-bell"></i>
+      </a>
+      <a href="tel:+919381728045" class="helpline">
+        <i class="fas fa-phone"></i>
+      </a>
     </div>
-  </div>
-
-  <!-- Right side icons -->
-  <div class="topRight">
-  <!-- Notifications -->
-  <a href="{{ url_for('notifications') }}" class="notification">
-    <i class="fas fa-bell"></i>
-  </a>
-  <!-- Helpline -->
-  
-<a href="tel:+919381728045" class="helpline">
-  <i class="fas fa-phone"></i>
-</a>
-
-</div>
-
-  {% else %}
-  <h2>Choose Your Account Type</h2>
-  {% endif %}
-</nav>
+    {% else %}
+    <h2>Choose Your Account type</h2>
+    {% endif %}
+  </nav>
 
   <br><br>
   <div class="container">
