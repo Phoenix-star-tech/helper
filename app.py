@@ -170,19 +170,28 @@ def logout():
 def home():
     with get_db_connection() as conn:
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+        # 1) Get distinct business services
         cursor.execute("SELECT DISTINCT business_type FROM users WHERE account_type='business'")
-        services_from_db = [row['business_type'] for row in cursor.fetchall()]        
+        services_from_db = [row['business_type'] for row in cursor.fetchall()]
+
+        # 2) Get the latest 3 ads (no overwrite issue now)
+        cursor.execute("SELECT * FROM ads ORDER BY created_at DESC")
+        ads = cursor.fetchall()
+
+        # 3) Get business usernames
         cursor.execute("SELECT username FROM users WHERE account_type='business'")
         business_usernames = [row['username'] for row in cursor.fetchall()]
 
     predefined_services = [
-        'House Cleaning', 'Kitchen Cleaning', 'Bathroom Cleaning', 'Room Cleaning', 
-        'Plumbing', 'Motor Repair', 'Electrician', 'Two wheeler', 'Three wheeler', 
+        'House Cleaning', 'Kitchen Cleaning', 'Bathroom Cleaning', 'Room Cleaning',
+        'Plumbing', 'Motor Repair', 'Electrician', 'Two wheeler', 'Three wheeler',
         'Four wheeler', 'Heavy Vehicle'
-    ]    
-    all_services = list(set(services_from_db + predefined_services))    
-    random.shuffle(all_services)    
-    random_services = all_services[:6]    
+    ]
+    all_services = list(set(services_from_db + predefined_services))
+    random.shuffle(all_services)
+    random_services = all_services[:6]
+
     service_images = {
         'House Cleaning': 'house_cleaning.jpg',
         'Kitchen Cleaning': 'kitchen_cleaning.jpg',
@@ -195,10 +204,16 @@ def home():
         'Three wheeler': 'three_wheeler.jpg',
         'Four wheeler': 'four_wheeler.jpg',
         'Heavy Vehicle': 'heavy_vechile.jpg'
-    }   
+    }
     random_service_images = {service: service_images.get(service, '') for service in random_services}
 
-    return render_template('home.html', services=random_services, service_images=random_service_images, business_usernames=business_usernames)
+    return render_template(
+        'home.html',
+        services=random_services,
+        service_images=random_service_images,
+        business_usernames=business_usernames,
+        ads=ads
+    )
 
 @app.route('/search', methods=['GET', 'POST'])
 def search():
@@ -248,11 +263,16 @@ def admin_dashboard():
         cursor.execute("SELECT reported_user, COUNT(*) as report_count FROM reports GROUP BY reported_user")
         reported_users = cursor.fetchall()
 
+        # NEW: fetch all ads for admin control
+        cursor.execute("SELECT id, name, image_url, ad_url, created_at FROM ads ORDER BY id DESC")
+        ads = cursor.fetchall()
+
     return render_template(
         'adime.html',
         users=users,
         reported_users=reported_users,
-        kyc_requests=kyc_requests
+        kyc_requests=kyc_requests,
+        ads=ads   # pass ads to template
     )
 
 @app.route('/admin/kyc/accept/<username>', methods=['POST'])
@@ -295,6 +315,48 @@ def delete_user(username):
         cursor = conn.cursor()
         cursor.execute("DELETE FROM users WHERE username=%s", (username,))
         conn.commit()
+    return redirect(url_for('admin_dashboard'))
+
+# Route: Upload Ads (Admin only)
+@app.route('/upload_ad', methods=['POST'])
+def upload_ad():
+    if 'username' not in session or session['username'] != 'adime':
+        return redirect(url_for('login'))
+
+    name = request.form.get('name', '').strip()
+    ad_url = request.form.get('url', '').strip() or None  # matches your form name="url"
+    image = request.files.get('image')
+
+    if not name or not image:
+        flash("Ad name and image are required.", "danger")
+        return redirect(url_for('admin_dashboard'))
+
+    # Upload image to Cloudinary (uses your existing helper)
+    image_url = upload_to_cloudinary(image)
+
+    with get_db_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO ads (name, image_url, ad_url) VALUES (%s, %s, %s)",
+                (name, image_url, ad_url)
+            )
+            conn.commit()
+
+    flash("Ad uploaded successfully.", "success")
+    return redirect(url_for('admin_dashboard'))
+
+# Route: Delete Ad (Admin only)
+@app.route('/delete_ad/<int:ad_id>', methods=['POST'])
+def delete_ad(ad_id):
+    if 'username' not in session or session['username'] != 'adime':
+        return redirect(url_for('login'))
+
+    with get_db_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM ads WHERE id = %s", (ad_id,))
+            conn.commit()
+
+    flash("Ad deleted.", "success")
     return redirect(url_for('admin_dashboard'))
 
 @app.route('/signup')
@@ -881,3 +943,4 @@ def delete_rating(username):
 if __name__ == '__main__':
     init_db()
     app.run(debug=True)
+
