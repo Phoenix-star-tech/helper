@@ -4,25 +4,25 @@
 <div class="profile-container">
   <div class="profile-header">
     <div class="profile-picture">
-      {% if user.profile_pic %}
-        <img src="{{ user.profile_pic or url_for('static', filename='default-avatar.png') }}" …>
+      {% if profile_user.profile_pic %}
+        <img src="{{ profile_user.profile_pic or url_for('static', filename='default-avatar.png') }}" …>
       {% else %}
         <img src="{{ url_for('static', filename='default_profile.png') }}" alt="Default Profile Picture" />
       {% endif %}
     </div>
     <div class="profile-info">
-      <h2>{{ user.username }}</h2>
-      <p>📞 {{ user.phone }}</p>
-      <p>📧 {{ user.gmail }}</p>
-      <p>ID: {{user.helperid}}</p>
-      {% if user.account_type == 'business' %}
-        <p>🏢 {{ user.business_type }}</p>
-        <p>📍 {{ user.location }}</p>
-        <p>📝 {{ user.bio }}</p>
-        <p>💵 {{ user.price if user.price else 'Not provided' }}</p>
+      <h2>{{ profile_user.username }}</h2>
+      <p>📞 {{ profile_user.phone }}</p>
+      <p>📧 {{ profile_user.gmail }}</p>
+      <p>ID: {{ profile_user.helperid }}</p>
+      {% if profile_user.account_type == 'business' %}
+        <p>🏢 {{ profile_user.business_type }}</p>
+        <p>📍 {{ profile_user.location }}</p>
+        <p>📝 {{ profile_user.bio }}</p>
+        <p>💵 {{ profile_user.price if profile_user.price else 'Not provided' }}</p>
       {% endif %}
     </div>
-    {% if session['username'] == user.username %}
+    {% if session['username'] == profile_user.username %}
       <a href="{{ url_for('edit_profile') }}" class="btn edit-btn">Edit Profile</a>
     {% endif %}
   </div>
@@ -35,23 +35,23 @@
     {% endif %}
   </div>  
 
-  {% if session['username'] != user.username %}
+  {% if session['username'] != profile_user.username %}
     <div class="rating-section">
       <h3>Rate & Comment</h3>
       {% if not has_rated %}
-        <form method="POST" action="{{ url_for('rate_comment', username=user.username) }}">
+        <form method="POST" action="{{ url_for('rate_comment', username=profile_user.username) }}">
           <div class="star-rating">
             {% for i in range(5, 0, -1) %}
-  <input type="radio" id="star{{ i }}" name="rating" value="{{ i }}" required />
-  <label for="star{{ i }}">★</label>
-{% endfor %}
+              <input type="radio" id="star{{ i }}" name="rating" value="{{ i }}" required />
+              <label for="star{{ i }}">★</label>
+            {% endfor %}
           </div>
           <textarea name="comment" placeholder="Leave a comment..." required></textarea>
           <button type="submit" class="btn">Submit</button>
         </form>
       {% else %}
         <p>You already rated this user.</p>
-        <form method="POST" action="{{ url_for('delete_rating', username=user.username) }}">
+        <form method="POST" action="{{ url_for('delete_rating', username=profile_user.username) }}">
           <button type="submit" class="btn delete-btn">Delete Rating</button>
         </form>
       {% endif %}
@@ -71,10 +71,10 @@
     {% endfor %}
   </div>
 
-  {% if session['username'] != user.username and not is_admin %}
+  {% if session['username'] != profile_user.username and not is_admin %}
     <div class="report-section">
       <h3>Report Profile</h3>
-      <form method="POST" action="{{ url_for('report', username=user.username) }}">
+      <form method="POST" action="{{ url_for('report', username=profile_user.username) }}">
         <textarea name="reason" placeholder="Reason for reporting..." required></textarea>
         <button type="submit" class="btn report-btn">Report</button>
       </form>
@@ -96,10 +96,12 @@
     </div>
   {% endif %}
 
-  {% if session['username'] == user.username %}
+  {% if session['username'] == profile_user.username %}
     <a href="{{ url_for('logout') }}" class="btn logout-btn">Logout</a>
   {% endif %}
 </div>
+
+<!-- Keep your CSS the same -->
 
 <!-- Styling -->
 <style>
