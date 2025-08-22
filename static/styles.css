@@ -350,6 +350,104 @@ h3 {
   text-align: center;
 }
 
+.slideshow-container {
+  position: relative;
+  max-width: 1000px;
+  margin: 20px auto;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.2);
+
+  /* ✅ Maintain 3:2 ratio */
+  aspect-ratio: 3 / 2;
+}
+
+.ad-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;   /* ✅ Crops without distortion */
+  border-radius: 12px;
+}
+
+.mySlides {
+  display: none;
+  animation: fade 1.5s ease-in-out;
+  height: 100%; /* ✅ Fill container height */
+}
+
+.ad-caption {
+  position: absolute;
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0,0,0,0.6);
+  color: #fff;
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 16px;
+  text-align: center;
+}
+
+/* Navigation arrows */
+.prev, .next {
+  cursor: pointer;
+  position: absolute;
+  top: 50%;
+  width: auto;
+  padding: 12px;
+  color: white;
+  font-weight: bold;
+  font-size: 20px;
+  border-radius: 50%;
+  background: rgba(0,0,0,0.4);
+  user-select: none;
+  transition: 0.3s;
+  transform: translateY(-50%);
+}
+
+.next { right: 10px; }
+.prev { left: 10px; }
+.prev:hover, .next:hover { background: rgba(0,0,0,0.8); }
+
+/* Dots */
+.dot-container {
+  text-align: center;
+  padding: 10px;
+}
+.dot {
+  cursor: pointer;
+  height: 12px;
+  width: 12px;
+  margin: 0 5px;
+  background-color: #bbb;
+  border-radius: 50%;
+  display: inline-block;
+  transition: background 0.3s;
+}
+.active, .dot:hover { background-color: #717171; }
+
+/* Fade effect */
+@keyframes fade {
+  from {opacity: .4}
+  to {opacity: 1}
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .slideshow-container {
+    max-width: 95%;
+    aspect-ratio: 3 / 2; /* ✅ Still keeps ratio */
+  }
+  .ad-caption {
+    font-size: 14px;
+    padding: 6px 12px;
+  }
+  .prev, .next {
+    font-size: 16px;
+    padding: 8px;
+  }
+}
+
 /* 📱 Mobile responsiveness */
 @media (max-width: 768px) {
   .services-grid {
