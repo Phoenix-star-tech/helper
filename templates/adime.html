@@ -31,6 +31,29 @@
   />
 </div>
 
+      <div id="toastStack" class="toast-stack">
+  {# Render Flask flashed messages if any #}
+  {% with messages = get_flashed_messages(with_categories=True) %}
+    {% if messages %}
+      {% for category, message in messages %}
+        {% set cls = 'toast--info' %}
+        {% if category in ['success','error','warning','info'] %}
+          {% set cls = 'toast--' ~ category %}
+        {% endif %}
+        <div class="toast {{ cls }}">
+          <span class="toast__dot"></span>
+          <div class="toast__content">
+            <div class="toast__title">
+              {{ category|capitalize if category else 'Notice' }}
+            </div>
+            <div class="toast__msg">{{ message }}</div>
+          </div>
+          <button class="toast__close" aria-label="Close" onclick="this.parentElement.remove()">×</button>
+        </div>
+      {% endfor %}
+    {% endif %}
+  {% endwith %}
+
 <!-- Ads Management -->
 <div class="mt-12">
   <h3 class="text-2xl font-bold text-gray-800 mb-6">📢 Manage Ads</h3>
@@ -222,5 +245,68 @@
     panel.classList.toggle('hidden');
   }
 </script>
+<script>
+  // Programmatic toast (for JS-detected failures)
+  function showToast(message, type = 'info', title = null, autoHideMs = 5000) {
+    const stack = document.getElementById('toastStack');
+    const wrapper = document.createElement('div');
+    wrapper.className = `toast toast--${type}`;
+
+    const dot = document.createElement('span');
+    dot.className = 'toast__dot';
+
+    const content = document.createElement('div');
+    content.className = 'toast__content';
+
+    const heading = document.createElement('div');
+    heading.className = 'toast__title';
+    heading.textContent = title || type.charAt(0).toUpperCase() + type.slice(1);
+
+    const msg = document.createElement('div');
+    msg.className = 'toast__msg';
+    msg.textContent = message;
+
+    const close = document.createElement('button');
+    close.className = 'toast__close';
+    close.setAttribute('aria-label', 'Close');
+    close.textContent = '×';
+    close.addEventListener('click', () => wrapper.remove());
+
+    content.appendChild(heading);
+    content.appendChild(msg);
+    wrapper.appendChild(dot);
+    wrapper.appendChild(content);
+    wrapper.appendChild(close);
+    stack.appendChild(wrapper);
+
+    if (autoHideMs && autoHideMs > 0) {
+      setTimeout(() => wrapper.remove(), autoHideMs);
+    }
+  }
+
+  // Catch generic JS errors & promise rejections → show error toast
+  window.addEventListener('error', (e) => {
+    showToast('Something went wrong while loading the page.', 'error', 'Error');
+  });
+  window.addEventListener('unhandledrejection', (e) => {
+    showToast('A background action failed. Please try again.', 'warning', 'Heads up');
+  });
+
+  // Optional: if your loader might get stuck, auto clear after 8s and show toast
+  // Update '#loading-overlay' to your actual loader element id
+  window.addEventListener('load', () => {
+    const loader = document.getElementById('loading-overlay');
+    if (!loader) return;
+    // Safety timeout: if still visible after 8s, hide and alert
+    setTimeout(() => {
+      const isVisible = loader.style.visibility !== 'hidden' && getComputedStyle(loader).visibility !== 'hidden';
+      if (isVisible) {
+        loader.style.visibility = 'hidden';
+        showToast('We had trouble finishing the load. Some data may be cached.', 'warning', 'Slow Connection');
+      }
+    }, 8000);
+  });
+</script>
+
 </body>
 </html>
