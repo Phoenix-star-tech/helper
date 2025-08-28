@@ -1,17 +1,19 @@
 {% extends 'base.html' %}
 {% block title %}Home - Mr. Helper{% endblock %}
 {% block content %}
+
 <div class="search-container">
-  <form action="{{ url_for('search') }}" method="GET">
+  <form action="{{ url_for('search') }}" method="GET" onsubmit="hideSuggestions()">
     <input
       type="text"
       id="search-box"
       name="q"
       placeholder="Search services..."
+      class="search-box"
       autocomplete="off"
       required
     />
-    <button type="submit">
+    <button type="submit" class="search-btn">
       <img src="{{ url_for('static', filename='assets/search-icon.png') }}" alt="Search" />
     </button>
     <div id="search-suggestions" class="suggestions-box"></div>
@@ -24,9 +26,6 @@
     <a href="{{ ad.ad_url if ad.ad_url else '#' }}" target="_blank">
       <img src="{{ ad.image_url }}" alt="{{ ad.name }}" class="ad-image">
     </a>
-    <div class="ad-caption">
-      {{ ad.name }}
-    </div>
   </div>
   {% endfor %}
 
@@ -56,33 +55,31 @@
     </a>
   {% endfor %}
 </div>
+
 <script>
   const searchBox = document.getElementById("search-box");
   const suggestionsBox = document.getElementById("search-suggestions");
 
   const placeholders = [
-    "Search for House Cleaning...",
-    "Search for Electrician...",
-    "Search for username...",
-    "Search for location...",
-    "Search for Motor Repair...",
-    "Search for Kitchen Cleaning...",
+    "Search for House Cleaning",
+    "Search for Electrician",
+    "Search for username",
+    "Search for location",
+    "Search for Motor Repair",
+    "Search for Kitchen Cleaning",
   ];
 
-  // Rotating placeholder
   let currentPlaceholder = 0;
   setInterval(() => {
     searchBox.setAttribute("placeholder", placeholders[currentPlaceholder]);
     currentPlaceholder = (currentPlaceholder + 1) % placeholders.length;
   }, 2000);
 
-  // Show suggestions on input
   searchBox.addEventListener("input", function () {
     const query = this.value.trim();
 
     if (!query) {
-      suggestionsBox.style.display = "none";
-      suggestionsBox.innerHTML = "";
+      hideSuggestions();
       return;
     }
 
@@ -92,11 +89,11 @@
         suggestionsBox.innerHTML = "";
 
         if (suggestions.length === 0) {
-          suggestionsBox.style.display = "none";
+          hideSuggestions();
           return;
         }
 
-        suggestionsBox.style.display = "block"; // ✅ SHOW suggestions box
+        suggestionsBox.style.display = "block";
 
         suggestions.forEach((item) => {
           const div = document.createElement("div");
@@ -104,25 +101,31 @@
           div.textContent = item;
           div.onclick = () => {
             searchBox.value = item;
-            suggestionsBox.style.display = "none"; // ✅ HIDE on select
-            suggestionsBox.innerHTML = "";
+            hideSuggestions();
+            searchBox.form.submit();
           };
           suggestionsBox.appendChild(div);
         });
       })
-      .catch(() => {
-        suggestionsBox.innerHTML = "";
-        suggestionsBox.style.display = "none";
-      });
+      .catch(() => hideSuggestions());
   });
 
-  // Hide suggestions when clicking outside
-  document.addEventListener("click", (e) => {
-    if (!suggestionsBox.contains(e.target) && e.target !== searchBox) {
-      suggestionsBox.innerHTML = "";
-      suggestionsBox.style.display = "none";
+  searchBox.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      hideSuggestions();
     }
   });
+
+  document.addEventListener("click", (e) => {
+    if (!suggestionsBox.contains(e.target) && e.target !== searchBox) {
+      hideSuggestions();
+    }
+  });
+
+  function hideSuggestions() {
+    suggestionsBox.innerHTML = "";
+    suggestionsBox.style.display = "none";
+  }
 </script>
 <script>
 let slideIndex = 1;
