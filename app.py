@@ -418,11 +418,17 @@ def signup_business():
 @app.route('/signup/user', methods=['GET', 'POST'])
 def signup_user():
     error = None
-    if request.method == 'POST':
+    if request.method == 'POST':        
         username = request.form['username'].strip()
         password = request.form['password'].strip()
         gender = request.form['gender']
+        gmail = request.form['gmail']  # FIX: changed () to []
         phone = request.form['phone']
+        housenumber = request.form['housenumber']
+        street = request.form['street']
+        landmark = request.form['landmark']
+        location = request.form['location']
+
         profile_pic_file = request.files.get('profile_pic')
         filename = ''
         if profile_pic_file and allowed_file(profile_pic_file.filename):
@@ -434,11 +440,11 @@ def signup_user():
             cursor.execute("SELECT 1 FROM users WHERE username = %s", (username,))
             if cursor.fetchone():
                 flash('Username is already taken.', 'danger')
-                return render_template('signup_user.html')  # Show same page with flash message
+                return render_template('signup_user.html')
             else:
                 try:
-                    cursor.execute("INSERT INTO users (username, password, gender, account_type, phone, profile_pic) VALUES (%s, %s, %s,%s, %s, %s)", 
-                                (username, password,gender, 'user', phone, filename))
+                    cursor.execute("INSERT INTO users (username, password, gender, account_type, phone, gmail, housenumber,street,landmark, location, profile_pic) VALUES (%s, %s,%s,%s,%s,%s,%s, %s,%s, %s, %s)", 
+                                (username, password,gender, 'user',gmail, phone, housenumber,street,landmark, location, filename))
                     conn.commit()
                     return redirect(url_for('login'))
                 except psycopg2.IntegrityError:
@@ -943,4 +949,3 @@ def delete_rating(username):
 if __name__ == '__main__':
     init_db()
     app.run(debug=True)
-
