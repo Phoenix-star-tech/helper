@@ -1,253 +1,37 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
-    <style>
-        /* Reset default margins and paddings */
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: 'Arial', sans-serif;
-            background-color: #e8e8e8;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-            margin: 0;
-        }
-
-        .login-container {
-            background-color: #FAF1E0;
-            padding: 100px;
-            border-radius: 40px;
-            box-shadow: 0 4px 18px rgba(0, 0, 0, 0.1);
-            width: 100%;
-            max-width: 400px;
-            text-align: center;
-        }
-
-        h2 {
-            margin-bottom: 20px;
-            color: #F1862f;
-            font-size: 49px;
-        }
-
-        h4{
-            color: #F1862f;
-            font-size: 15px;
-            margin-top: -13px;
-            margin-left: 50px;
-
-        }
-
-        label {
-            display: block;
-            margin: 10px 0 5px;
-            text-align: left;
-            font-weight: bold;
-        }
-
-        .user1 {
-            width: 130%;
-            padding: 10px 20px;
-            margin-bottom: 20px;
-            margin-top: 30px;
-            margin-left: -30px;
-            border: 1px solid #ddd;
-            border-radius: 10px;
-            font-size: 16px;
-            outline: none;
-        }
-
-        input[type="password"] {
-            width: 130%;
-            padding: 10px 20px;
-            margin-bottom: 15px;
-            margin-left: -30px;
-            border: 1px solid #ddd;
-            border-radius: 10px;
-            font-size: 16px;
-            outline: none;
-        }
-
-        input[type="text"]:focus, input[type="password"]:focus {
-            border-color: #f8fafb;
-        }
-
-        button {
-            width: 80%;
-            padding: 12px;
-            background-color: #ff6600;
-            color: white;
-            border: none;
-            border-radius: 20px;
-            margin-top: 14px;
-            font-size: 16px;
-            cursor: pointer;
-            transition: background-color 0.3s;
-        }
-
-        button:hover {
-            background-color: #d86213;
-        }
-
-        p {
-            margin-top: 15px;
-            font-size: 14px;
-            color: #666;
-        }
-
-        a {
-            color: #007bff;
-            text-decoration: none;
-        }
-
-        a:hover {
-            text-decoration: underline;
-        }
-
-        .error {
-            margin-top: 10px;
-            padding: 10px;
-            background-color: #f8d7da;
-            color: #721c24;
-            border-radius: 4px;
-            font-size: 14px;
-        }
-
-        @media (max-width: 480px) {
-            .login-container {
-                padding: 70px;
-                max-width: 90%;
-            }
-            
-            button {
-                font-size: 14px;
-            }
-        }
-          /* Fullscreen overlay */
-          #loading-overlay {
-              position: fixed;
-              top: 0;
-              left: 0;
-              width: 100%;
-              height: 100%;
-              background: rgba(255, 255, 255, 0.9); /* light background */
-              display: flex;
-              justify-content: center;
-              align-items: center;
-              z-index: 9999;
-              visibility: hidden; /* hidden by default */
-          }
-        
-          /* Spinner Animation */
-          .spinner {
-              border: 8px solid #f3f3f3;
-              border-top: 8px solid #3498db;
-              border-radius: 50%;
-              width: 60px;
-              height: 60px;
-              animation: spin 1s linear infinite;
-          }
-        
-          @keyframes spin {
-              0% { transform: rotate(0deg); }
-              100% { transform: rotate(360deg); }
-          }
-  /* Toast container (top-right on desktop, full width on mobile) */
-  .toast-stack {
-    position: fixed;
-    top: 72px;               /* below your top navbar */
-    right: 16px;
-    z-index: 11000;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    max-width: 360px;
-  }
-  @media (max-width: 640px) {
-    .toast-stack {
-      left: 12px;
-      right: 12px;
-      max-width: none;
-    }
-  }
-
-  /* Base toast */
-  .toast {
-    display: flex;
-    align-items: start;
-    gap: 12px;
-    padding: 12px 14px;
-    border-radius: 10px;
-    box-shadow: 0 10px 18px rgba(0,0,0,.08);
-    border: 1px solid rgba(0,0,0,.08);
-    background: #fff;
-    color: #222;
-    animation: slideIn .25s ease-out;
-  }
-  @keyframes slideIn {
-    from { transform: translateY(-6px); opacity: 0; }
-    to   { transform: translateY(0);     opacity: 1; }
-  }
-
-  /* Variants */
-  .toast--success { border-color: #c7f3d2; background: #f1fdf4; }
-  .toast--error   { border-color: #ffd1d1; background: #fff5f5; }
-  .toast--warning { border-color: #ffe9b3; background: #fffaf0; }
-  .toast--info    { border-color: #cfe6ff; background: #f5faff; }
-
-  /* Accent dot */
-  .toast__dot {
-    width: 10px; height: 10px; border-radius: 999px; margin-top: 6px;
-  }
-  .toast--success .toast__dot { background: #22c55e; }
-  .toast--error   .toast__dot { background: #ef4444; }
-  .toast--warning .toast__dot { background: #f59e0b; }
-  .toast--info    .toast__dot { background: #3b82f6; }
-
-  /* Content */
-  .toast__content { flex: 1; }
-  .toast__title   { font-weight: 700; margin-bottom: 2px; font-size: 14px; }
-  .toast__msg     { font-size: 13px; line-height: 1.35; }
-
-  /* Close (×) */
-  .toast__close {
-    cursor: pointer;
-    border: none;
-    background: transparent;
-    font-size: 18px;
-    line-height: 1;
-    color: #555;
-    padding: 0 4px;
-    align-self: start;
-  }
-  .toast__close:hover { color: #000; }
-</style>
-
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Admin Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="{{ url_for('static', filename='assets/style.css') }}" />
 </head>
-<body>
-    <div class="login-container">
-        <h2>Mr.Helper</h2>
-        <h4>Your home, Our duty</h4>
-        <form method="POST">
-            <input class="user1" type="text" name="username" id="username" placeholder="Username" required>
 
-            <input type="password" name="password" id="password" placeholder="Password">
+<body class="bg-gray-50">
+<div class="min-h-screen bg-gray-50 p-6">
+  <div class="max-w-7xl mx-auto">
+    <div class="flex items-center justify-between mb-6">
+      <h2 class="text-3xl font-extrabold text-gray-900">Welcome, Admin</h2>
+      <a href="{{ url_for('logout') }}"
+         class="px-4 py-2 bg-red-500 text-white rounded-lg shadow hover:bg-red-600 transition">
+        Logout
+      </a>
+    </div>
 
-            <button type="submit">Login</button>
-        </form>
+    <!-- Search -->
+   <!-- Updated Search -->
+<div class="mb-8">
+  <input
+    type="text"
+    id="searchInput"
+    placeholder="Search by username, helper ID, type, or location…"
+    class="w-full md:w-1/2 px-4 py-3 border border-gray-300 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 transition"
+  />
+</div>
 
-        <p>Don't have an account? <a href="{{ url_for('signup') }}">Create Account</a></p>
-
-        <div id="toastStack" class="toast-stack">
+      <div id="toastStack" class="toast-stack">
   {# Render Flask flashed messages if any #}
   {% with messages = get_flashed_messages(with_categories=True) %}
     {% if messages %}
@@ -269,12 +53,198 @@
       {% endfor %}
     {% endif %}
   {% endwith %}
-</div>
-    <!-- Loading Overlay -->
-<div id="loading-overlay">
-    <div class="spinner"></div>
+
+<!-- Ads Management -->
+<div class="mt-12">
+  <h3 class="text-2xl font-bold text-gray-800 mb-6">📢 Manage Ads</h3>
+
+  <!-- Upload New Ad -->
+  <div class="max-w-2xl bg-white p-6 rounded-2xl shadow mb-8">
+    <h4 class="text-lg font-semibold text-gray-800 mb-4">Upload New Ad</h4>
+    <form action="{{ url_for('upload_ad') }}" method="POST" enctype="multipart/form-data" class="space-y-4">
+      <div>
+        <label class="block text-sm font-medium text-gray-700">Ad Name</label>
+        <input type="text" name="name" required
+               class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none">
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700">Ad URL (optional)</label>
+        <input type="url" name="url"
+               class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
+               placeholder="https://example.com">
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700">Ad Image</label>
+        <input type="file" name="image" accept="image/*" required
+               class="w-full px-4 py-2 border rounded-lg bg-gray-50 focus:ring-2 focus:ring-indigo-500 outline-none">
+      </div>
+      <button type="submit"
+              class="w-full bg-indigo-600 text-white py-2.5 rounded-lg hover:bg-indigo-700 transition">
+        🚀 Upload Ad
+      </button>
+    </form>
+  </div>
+
+  <!-- Existing Ads -->
+  <h4 class="text-lg font-semibold text-gray-800 mb-4">Current Ads</h4>
+
+  {% if ads and ads|length > 0 %}
+  <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
+    {% for ad in ads %}
+      <div class="bg-white rounded-2xl shadow overflow-hidden flex flex-col">
+        <a {% if ad.ad_url %}href="{{ ad.ad_url }}" target="_blank" rel="noopener"{% endif %} class="block">
+          <img src="{{ ad.image_url }}" alt="{{ ad.name }}" class="h-44 w-full object-cover">
+        </a>
+        <div class="p-4 flex-1 flex flex-col gap-3">
+          <div>
+            <h5 class="text-base font-semibold text-gray-900 truncate">{{ ad.name }}</h5>
+            {% if ad.ad_url %}
+              <a href="{{ ad.ad_url }}" target="_blank" class="text-indigo-600 text-sm hover:underline break-all">
+                {{ ad.ad_url }}
+              </a>
+            {% endif %}
+          </div>
+
+          <form action="{{ url_for('delete_ad', ad_id=ad.id) }}" method="POST"
+                onsubmit="return confirm('Delete this ad?');" class="mt-auto">
+            <button type="submit"
+                    class="w-full bg-red-500 text-white py-2 rounded-lg hover:bg-red-600 transition">
+              ❌ Delete
+            </button>
+          </form>
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+  {% else %}
+    <div class="text-gray-500">No ads yet.</div>
+  {% endif %}
 </div>
 
+<!-- Users Table (desktop) -->
+<table id="userTable" class="min-w-full bg-white rounded-lg shadow hidden md:table">
+  <thead class="bg-gray-100 uppercase text-gray-600 text-sm sticky top-0">
+    <tr>
+      <th class="px-6 py-3 text-left">Username</th>
+      <th class="px-6 py-3 text-left">Helper ID</th>
+      <th class="px-6 py-3 text-left">Type</th>
+      <th class="px-6 py-3 text-left">Location</th>
+      <th class="px-6 py-3 text-center">Action</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for user in users %}
+    <tr class="border-b hover:bg-gray-50">
+      <td class="px-6 py-4">
+        <a href="{{ url_for('profile', username=user.username) }}"
+           class="text-indigo-600 hover:underline font-medium">
+          {{ user.username }}
+        </a>
+      </td>
+      <td class="px-6 py-4 text-gray-700 font-mono">{{ user.helperid or 'N/A' }}</td>
+      <td class="px-6 py-4">{{ user.account_type }}</td>
+      <td class="px-6 py-4">{{ user.location or 'N/A' }}</td>
+      <td class="px-6 py-4 text-center">
+        <form action="{{ url_for('delete_user', username=user.username) }}" method="POST"
+              onsubmit="return confirm('Delete {{ user.username }}?');">
+          <button type="submit"
+                  class="px-3 py-1 bg-red-500 text-white rounded-lg hover:bg-red-600 transition">
+            Delete
+          </button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<!-- Mobile Cards -->
+<div class="grid gap-4 md:hidden">
+  {% for user in users %}
+  <div class="bg-white p-4 rounded-lg shadow flex flex-col">
+    <div class="flex justify-between items-center mb-2">
+      <a href="{{ url_for('profile', username=user.username) }}"
+         class="text-lg font-semibold text-indigo-600 hover:underline">
+        {{ user.username }}
+      </a>
+      <form action="{{ url_for('delete_user', username=user.username) }}" method="POST"
+            onsubmit="return confirm('Delete {{ user.username }}?');">
+        <button type="submit"
+                class="px-2 py-1 bg-red-500 text-white rounded-full hover:bg-red-600 transition text-sm">
+          ✕
+        </button>
+      </form>
+    </div>
+    <div class="text-sm text-gray-600"><strong>Helper ID:</strong> {{ user.helperid or 'N/A' }}</div>
+    <div class="text-sm text-gray-600">{{ user.account_type }}</div>
+    <div class="text-sm text-gray-600">{{ user.location or 'N/A' }}</div>
+  </div>
+  {% endfor %}
+</div>
+
+    <!-- Reported Users -->
+    <div class="mt-12">
+      <h3 class="text-2xl font-bold text-gray-800 mb-4">Reported Users</h3>
+      <div class="space-y-4">
+        {% for report in reported_users %}
+        <div class="bg-white rounded-lg shadow p-4">
+          <div class="flex justify-between items-center">
+            <div>
+              <a href="{{ url_for('profile', username=report.reported_user) }}"
+                 class="text-indigo-600 font-medium hover:underline">
+                {{ report.reported_user }}
+              </a>
+              <span class="ml-2 text-sm text-gray-500">({{ report.report_count }} reports)</span>
+            </div>
+            <div class="space-x-2">
+              <button onclick="toggleReasons('reasons-{{ loop.index0 }}')"
+                      class="px-3 py-1 bg-yellow-400 text-white rounded-lg hover:bg-yellow-500 transition text-sm">
+                View Reasons
+              </button>
+              <form action="{{ url_for('delete_user', username=report.reported_user) }}" method="POST"
+                    onsubmit="return confirm('Delete {{ report.reported_user }}?');" class="inline">
+                <button type="submit"
+                        class="px-3 py-1 bg-red-500 text-white rounded-lg hover:bg-red-600 transition text-sm">
+                  Delete
+                </button>
+              </form>
+            </div>
+          </div>
+          <div id="reasons-{{ loop.index0 }}" class="mt-3 p-3 bg-gray-50 rounded-lg border border-gray-200 hidden">
+            <ul class="list-disc list-inside text-gray-700">
+              {% for reason in report.reasons %}
+              <li>{{ reason }}</li>
+              {% endfor %}
+            </ul>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // Search filter
+  document.getElementById('searchInput').addEventListener('input', function(e) {
+    const filter = e.target.value.toLowerCase();
+    document.querySelectorAll('#userTable tbody tr').forEach(row => {
+      const text = row.innerText.toLowerCase();
+      row.style.display = text.includes(filter) ? '' : 'none';
+    });
+    // mobile cards
+    document.querySelectorAll('.md\\:hidden > div').forEach(card => {
+      const text = card.innerText.toLowerCase();
+      card.style.display = text.includes(filter) ? '' : 'none';
+    });
+  });
+
+  // Toggle reasons panels
+  function toggleReasons(id) {
+    const panel = document.getElementById(id);
+    panel.classList.toggle('hidden');
+  }
+</script>
 <script>
   // Programmatic toast (for JS-detected failures)
   function showToast(message, type = 'info', title = null, autoHideMs = 5000) {
@@ -335,29 +305,6 @@
         showToast('We had trouble finishing the load. Some data may be cached.', 'warning', 'Slow Connection');
       }
     }, 8000);
-  });
-</script>
-
-<script>
-  const loader = document.getElementById("loading-overlay");
-
-  // Show loader before leaving page
-  window.addEventListener("beforeunload", () => {
-      loader.style.visibility = "visible";
-  });
-
-  // Hide loader when page fully loads
-  window.addEventListener("load", () => {
-      loader.style.visibility = "hidden";
-  });
-
-  // Handle when navigating with back/forward buttons (bfcache restore)
-  window.addEventListener("pageshow", (event) => {
-      loader.style.visibility = "hidden";  // Ensure loader is hidden when page is restored
-  });
-
-  window.addEventListener("pagehide", () => {
-      loader.style.visibility = "visible"; // Show loader when leaving
   });
 </script>
 
