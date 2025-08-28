@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -15,7 +16,7 @@
         .signup-container {
             max-width: 480px;
             margin: 60px auto;
-            background: #ffffff;
+            background: #faf7f2;
             padding: 35px;
             border-radius: 16px;
             box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
@@ -31,6 +32,14 @@
             margin-bottom: 20px;
         }
 
+        .form-group h1 {
+            text-align: center;
+            margin-bottom: 20px;
+            color: #f1862f;
+            font-size: 40px;
+            font-weight: bold;
+        }
+
         label {
             font-weight: 600;
             display: block;
@@ -42,7 +51,7 @@
         input[type="password"],
         select,
         textarea {
-            width: 100%;
+            width: 92%;
             padding: 12px;
             border: 1px solid #ccc;
             border-radius: 10px;
@@ -61,39 +70,73 @@
             margin-bottom: 20px;
         }
 
-        .upload-btn {
-            display: inline-block;
-            background-color: #007bff;
-            color: #fff;
-            padding: 10px 18px;
-            border-radius: 10px;
+        .upload-section img {
+            width: 120px;
+            height: 120px;
+            border-radius: 50%;
+            object-fit: cover;
             cursor: pointer;
-            margin-top: 10px;
-            font-weight: 500;
-            font-size: 14px;
+            border: 2px solid #ddd;
+            transition: 0.3s;
         }
 
-        .upload-btn:hover {
-            background-color: #0056b3;
+        .logina a {
+            color: #f1862f;
+            font-weight: bold;
+            text-decoration: none;
+        }
+
+        #previewImage {
+            margin-top: 10px;
+            width: 100px;
+            height: 100px;
+            object-fit: cover;
+            border-radius: 50%;
+            border: 2px solid #ccc;
+            display: block;
         }
 
         #imageInput {
             display: none;
         }
 
-        #previewImage {
-            margin-top: 15px;
-            width: 100px;
-            height: 100px;
-            object-fit: cover;
-            border-radius: 50%;
-            display: none;
-            border: 2px solid #ccc;
+        select {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ccc;
+            border-radius: 10px;
+            font-size: 15px;
+            background-color: #fff;
+            appearance: none;
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            cursor: pointer;
+            transition: border-color 0.3s;
         }
 
+        select:focus {
+            border-color: #007bff;
+            outline: none;
+        }
+
+        .gender {
+            position: relative;
+        }
+
+        .gender::after {
+            content: "▼";
+            font-size: 12px;
+            color: #666;
+            position: absolute;
+            right: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            pointer-events: none;
+        }
+        
         .submit-btn {
-            width: 100%;
-            background-color: #28a745;
+            width: 45%;
+            background-color: #f1862f;
             color: #fff;
             padding: 14px;
             font-size: 16px;
@@ -131,95 +174,160 @@
                 font-size: 15px;
             }
         }
-    </style>
-    <style>
-      /* Fullscreen overlay */
-      #loading-overlay {
-          position: fixed;
-          top: 0;
-          left: 0;
-          width: 100%;
-          height: 100%;
-          background: rgba(255, 255, 255, 0.9); /* light background */
-          display: flex;
-          justify-content: center;
-          align-items: center;
-          z-index: 9999;
-          visibility: hidden; /* hidden by default */
-      }
-    
-      /* Spinner Animation */
-      .spinner {
-          border: 8px solid #f3f3f3;
-          border-top: 8px solid #3498db;
-          border-radius: 50%;
-          width: 60px;
-          height: 60px;
-          animation: spin 1s linear infinite;
-      }
-    
-      @keyframes spin {
-          0% { transform: rotate(0deg); }
-          100% { transform: rotate(360deg); }
-      }
+
+        #loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(255, 255, 255, 0.9);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+            visibility: hidden;
+        }
+
+        .spinner {
+            border: 8px solid #f3f3f3;
+            border-top: 8px solid #3498db;
+            border-radius: 50%;
+            width: 60px;
+            height: 60px;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
+        .logoinfo {
+            display: flex;
+            justify-content: center;
+            margin: 20px 0;
+        }
+
+        .logoinfo img {
+            width: 100px;
+            height: 100px;
+            border-radius: 20%;
+            object-fit: cover;
+            border: 2px solid #ddd;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        /* 📱 Responsive adjustments */
+        @media (max-width: 600px) {
+            .logoinfo img {
+                width: 90px;
+                height: 90px;
+            }
+        }
+
+        @media (max-width: 400px) {
+            .logoinfo img {
+                width: 50px;
+                height: 50px;
+            }
+        }
     </style>
 </head>
+
 <body>
     <div class="signup-container">
-        <h2>User Signup</h2>
         <form method="POST" enctype="multipart/form-data">
-            <div class="form-group upload-section">
-                <label>Profile Picture</label>
-                <img id="previewImage" src="#" alt="Image Preview" />
-                <input type="file" id="imageInput" accept="image/*" name="profile_pic" required />
-                <div class="upload-btn" onclick="document.getElementById('imageInput').click();">
-                    Upload Pic
-                </div>
+            <div class="logoinfo">
+                <img src="{{ url_for('static', filename='assets/mrhelperlogo.jpg') }}" alt="Logo" width="50"
+                    height="50">
             </div>
-{% with messages = get_flashed_messages(with_categories=true) %}
-  {% if messages %}
-    <div>
-      {% for category, message in messages %}
-        <div class="alert alert-{{ category }}">{{ message }}</div>
-      {% endfor %}
-    </div>
-  {% endif %}
-{% endwith %}
+            <div class="form-group upload-section">
+                <center>
+                    <h1>SIGN UP</h1>
+                    <img id="previewImage" src="{{ url_for('static', filename='assets/default_camera.jpg') }}"
+                        alt="Profile Picture" onclick="document.getElementById('imageInput').click();" />
+                    <input type="file" id="imageInput" accept="image/*" name="profile_pic" /><br>
+                    <label>Profile Picture</label>
+                </center>
+            </div>
+
+            {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+            <div>
+                {% for category, message in messages %}
+                <div class="alert alert-{{ category }}">{{ message }}</div>
+                {% endfor %}
+            </div>
+            {% endif %}
+            {% endwith %}
             <div class="form-group">
-                <label>Username</label>
-                <input type="text" name="username" required />
+                <input type="text" placeholder="Username" name="username" required />
             </div>
 
             <div class="form-group">
-                <label>Password</label>
-                <input type="password" name="password" required />
+                <input type="password" placeholder="password" name="password" type="password" required />
             </div>
-            <div class="form-group">
-                <label>Gender</label>
-                <select name="gender" required>
-                    <option>Male</option>
-                    <option>Female</option>
-                    <option>Other</option>
+            <div class="form-group gender">
+                <select id="gender" name="gender" required>
+                    <option value="" class="genderopt" disabled selected>Select your gender</option>
+                    <option value="male">Male</option>
+                    <option value="female">Female</option>
+                    <option value="other">Other</option>
                 </select>
             </div>
 
             <div class="form-group">
-                <label>Phone Number</label>
-                <input type="text" name="phone" required />
+                <input type="text" placeholder="Email" name="gmail" pattern="[a-zA-Z0-9._%+-]+@gmail\.com" required>
             </div>
 
-            <button type="submit" class="submit-btn">Signup</button>
+            <div class="form-group">
+                <input type="text" placeholder="Phone Number" pattern="[0-9]{10}" maxlength="10"  name="phone" required />
+            </div>
+
+            <div class="form-group">
+                <input type="text" placeholder="House No / Flat No" name="housenumber" required />
+            </div>
+
+            <div class="form-group">
+                <input type="text" placeholder="Street" name="street" required />
+            </div>
+
+            <div class="form-group">
+                <input type="text" placeholder="Landmark" name="landmark" />
+            </div>
+
+            <div class="form-group gender">
+                <select id="gender" name="location" required>
+                    <option value="" disabled selected>Select your City</option>
+                    <option value="hyderabad">Hyderabad</option>
+                    <option value="warangal">Warangal</option>
+                    <option value="hanamkonda">Hanamkonda</option>
+                    <option value="kazipet">Kazipet</option>
+                </select>
+            </div>
+            <center>
+                <button type="submit" class="submit-btn">Signup</button>
+            </center>
         </form>
+
+        <center>
+            <p class="logina">Already have an account? <a href="{{ url_for('login') }}">Login</a></p>
+        </center>
 
         {% if error %}
         <div class="error">{{ error }}</div>
         {% endif %}
     </div>
-<!-- Loading Overlay -->
-<div id="loading-overlay">
-    <div class="spinner"></div>
-</div>
-
+    <!-- Loading Overlay -->
+    <div id="loading-overlay">
+        <div class="spinner"></div>
+    </div>
 
     <script>
         document.getElementById("imageInput").addEventListener("change", function () {
@@ -227,36 +335,35 @@
             if (file) {
                 const reader = new FileReader();
                 reader.onload = function (e) {
-                    const img = document.getElementById("previewImage");
-                    img.src = e.target.result;
-                    img.style.display = "block";
+                    document.getElementById("previewImage").src = e.target.result;
                 };
                 reader.readAsDataURL(file);
             }
         });
     </script>
-<script>
-  const loader = document.getElementById("loading-overlay");
+    <script>
+        const loader = document.getElementById("loading-overlay");
 
-  // Show loader before leaving page
-  window.addEventListener("beforeunload", () => {
-      loader.style.visibility = "visible";
-  });
+        // Show loader before leaving page
+        window.addEventListener("beforeunload", () => {
+            loader.style.visibility = "visible";
+        });
 
-  // Hide loader when page fully loads
-  window.addEventListener("load", () => {
-      loader.style.visibility = "hidden";
-  });
+        // Hide loader when page fully loads
+        window.addEventListener("load", () => {
+            loader.style.visibility = "hidden";
+        });
 
-  // Handle when navigating with back/forward buttons (bfcache restore)
-  window.addEventListener("pageshow", (event) => {
-      loader.style.visibility = "hidden";  // Ensure loader is hidden when page is restored
-  });
+        // Handle when navigating with back/forward buttons (bfcache restore)
+        window.addEventListener("pageshow", (event) => {
+            loader.style.visibility = "hidden";  // Ensure loader is hidden when page is restored
+        });
 
-  window.addEventListener("pagehide", () => {
-      loader.style.visibility = "visible"; // Show loader when leaving
-  });
-</script>
+        window.addEventListener("pagehide", () => {
+            loader.style.visibility = "visible"; // Show loader when leaving
+        });
+    </script>
 
 </body>
+
 </html>
