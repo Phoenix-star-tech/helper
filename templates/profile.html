@@ -16,7 +16,7 @@
       <p>📧 {{ profile_user.gmail }}</p>
       <p>ID: {{ profile_user.helperid }}</p>
       {% if profile_user.account_type == 'business' %}
-        <p>🏢 {{ profile_user.business_type }}</p>
+        <p>🏢 {{ profile_user.service_type }}</p>
         <p>📍 {{ profile_user.location }}</p>
         <p>📝 {{ profile_user.bio }}</p>
         <p>💵 {{ profile_user.price if profile_user.price else 'Not provided' }}</p>
