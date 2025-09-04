@@ -274,7 +274,6 @@ def admin_dashboard():
         kyc_requests=kyc_requests,
         ads=ads   # pass ads to template
     )
-
 @app.route('/admin/kyc/accept/<username>', methods=['POST'])
 def accept_kyc(username):
     with get_db_connection() as conn:
@@ -285,11 +284,17 @@ def accept_kyc(username):
         if user:
             cursor.execute("""
                 INSERT INTO users 
-                (username, password, account_type, phone, gmail, business_type, location, bio, price, profile_pic, helperid) 
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """, (user['username'], user['password'], 'business', user['phone'], user['gmail'],
-                  user['business_type'], user['location'], user['bio'], user['price'],
-                  user['profile_pic'], user['helperid']))
+                (username, password, account_type, phone, gmail, business_type,housenumber,street,landmark, location, bio, price, profile_pic, helperid, aadhaar_file, pan_file) 
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """, (
+                user['username'], user['password'], 'business',
+                user['phone'], user['gmail'],
+                user['business_type'], user['location'],
+                user['housenumber'], user['street'], user['landmark'],
+                user['bio'], user['price'],
+                user['profile_pic'], user['helperid'],
+                user['aadhaar_file'], user['pan_file']
+            ))
             
             # Clean up from KYC
             cursor.execute("DELETE FROM kyc WHERE username = %s", (username,))
@@ -362,7 +367,6 @@ def delete_ad(ad_id):
 @app.route('/signup')
 def signup():
     return render_template('signup.html')
-
 @app.route('/signup/business', methods=['GET', 'POST'])
 def signup_business():
     if request.method == 'POST':
@@ -370,48 +374,65 @@ def signup_business():
         password = request.form['password'].strip()
         phone = request.form['phone']
         gender = request.form['gender']
-        gmail = request.form['gmail']  # FIX: changed () to []
+        gmail = request.form['gmail'] 
         business_type = request.form['business_type']
+        service_type = request.form['service_type']
+        housenumber = request.form['housenumber']
+        street = request.form['street']
+        landmark = request.form['landmark']
         location = request.form['location']
         bio = request.form.get('bio', '')
         price = request.form.get('price', '')
 
+        # File uploads
         profile_pic_file = request.files.get('profile_pic')
-        filename = ''
+        aadhaar_file = request.files.get('aadhaar_card')
+        pan_file = request.files.get('pan_card')
+
+        profile_filename = aadhaar_filename = pan_filename = ''
+
         if profile_pic_file and allowed_file(profile_pic_file.filename):
-            filename = upload_to_cloudinary(profile_pic_file)
+            profile_filename = upload_to_cloudinary(profile_pic_file)
+
+        if aadhaar_file and allowed_file(aadhaar_file.filename):
+            aadhaar_filename = upload_to_cloudinary(aadhaar_file)
+
+        if pan_file and allowed_file(pan_file.filename):
+            pan_filename = upload_to_cloudinary(pan_file)
 
         try:
             with get_db_connection() as conn:
                 cursor = conn.cursor()
 
-                # Check if the username already exists
-                cursor.execute("SELECT 1 FROM users WHERE username = %s UNION SELECT 1 FROM kyc WHERE username = %s", (username, username))
+                # Check username uniqueness
+                cursor.execute("SELECT 1 FROM users WHERE username = %s UNION SELECT 1 FROM kyc WHERE username = %s", 
+                               (username, username))
                 if cursor.fetchone():
-                    flash('Username is already taken.', 'danger')
+                    flash('Username is already taken.', 'error')
                     return render_template('signup_business.html')
 
-                # Generate unique 10-digit helper ID
+                # Generate helper ID
                 helperid = generate_unique_helperid(cursor)
 
-                # Insert into users table
+                # Insert into KYC
                 cursor.execute("""
                     INSERT INTO kyc 
-                    (username, password,gender, phone, gmail, business_type, location, bio, price, profile_pic, helperid)
-                    VALUES (%s, %s, %s, %s, %s, %s,%s, %s, %s, %s, %s)
-                """, (username, password,gender, phone, gmail, business_type, location, bio, price, filename, helperid))
+                    (username, password, gender, phone, gmail, business_type, service_type,housenumber,street,landmark, location, bio, price, profile_pic, aadhaar_file, pan_file, helperid)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,%s, %s, %s)
+                """, (username, password, gender, phone, gmail, business_type, service_type,housenumber,street,landmark, location, bio, price, 
+                      profile_filename, aadhaar_filename, pan_filename, helperid))
 
-                # Insert into services and locations if new
+                # Insert into services/locations if new
                 cursor.execute("INSERT INTO services (service_name) VALUES (%s) ON CONFLICT DO NOTHING", (business_type,))
                 cursor.execute("INSERT INTO locations (location_name) VALUES (%s) ON CONFLICT DO NOTHING", (location,))
                 conn.commit()
 
                 flash("Our team will connect for KYC.", "success")
-                return render_template('signup_business.html')
+                return redirect(url_for('login'))  # redirect after success
 
         except Exception as e:
             print(f"Error: {e}")
-            flash('An error occurred during registration. Please try again.', 'danger')
+            flash('An error occurred during registration. Please try again.', 'error')
 
     return render_template('signup_business.html')
 
@@ -444,7 +465,7 @@ def signup_user():
             else:
                 try:
                     cursor.execute("INSERT INTO users (username, password, gender, account_type, phone, gmail, housenumber,street,landmark, location, profile_pic) VALUES (%s, %s,%s,%s,%s,%s,%s, %s,%s, %s, %s)", 
-                                (username, password,gender, 'user',gmail, phone, housenumber,street,landmark, location, filename))
+                                (username, password,gender, 'user', phone, gmail, housenumber,street,landmark, location, filename))
                     conn.commit()
                     return redirect(url_for('login'))
                 except psycopg2.IntegrityError:
