@@ -1,425 +1,741 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Business Signup</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='assets/style.css') }}" />
-    <style>
-        body {
-            margin: 0;
-            background: #f8f9fa;
-            font-family: "Segoe UI", sans-serif;
-        }
-        .signup-container {
-            max-width: 500px;
-            margin: 40px auto;
-            background: #ffffff;
-            padding: 30px;
-            border-radius: 16px;
-            box-shadow: 0 8px 24px rgba(0,0,0,0.1);
-        }
-        .signup-container h2 {
-            text-align: center;
-            margin-bottom: 25px;
-            color: #343a40;
-        }
-        .form-group {
-            margin-bottom: 16px;
-        }
-        label {
-            font-weight: 600;
-            display: block;
-            margin-bottom: 6px;
-        }
-        input[type="text"],
-        input[type="password"],
-        select,
-        textarea {
-            width: 100%;
-            padding: 12px;
-            border: 1px solid #ccc;
-            border-radius: 8px;
-            font-size: 14px;
-            outline: none;
-        }
-        textarea {
-            resize: vertical;
-        }
-        .submit-btn {
-            width: 100%;
-            background: #28a745;
-            color: #fff;
-            border: none;
-            padding: 14px;
-            font-size: 16px;
-            border-radius: 10px;
-            cursor: pointer;
-            margin-top: 10px;
-        }
-        .submit-btn:hover {
-            background: #218838;
-        }
-
-        .hidden-input {
-            display: none;
-        }
-
-        .upload-label {
-            display: inline-block;
-            background-color: #007bff;
-            color: white;
-            padding: 10px 16px;
-            border-radius: 8px;
-            cursor: pointer;
-            text-align: center;
-        }
-
-        .upload-label:hover {
-            background-color: #0056b3;
-        }
-
-        #previewImage {
-            margin-top: 15px;
-            width: 100px;
-            height: 100px;
-            object-fit: cover;
-            border-radius: 10px;
-            display: none;
-        }
-
-        @media (max-width: 600px) {
-            .signup-container {
-                margin: 20px;
-                padding: 20px;
-            }
-        }
-    </style>
-    <style>
-      /* Fullscreen overlay */
-      #loading-overlay {
-          position: fixed;
-          top: 0;
-          left: 0;
-          width: 100%;
-          height: 100%;
-          background: rgba(255, 255, 255, 0.9); /* light background */
-          display: flex;
-          justify-content: center;
-          align-items: center;
-          z-index: 9999;
-          visibility: hidden; /* hidden by default */
-      }
-    
-      /* Spinner Animation */
-      .spinner {
-          border: 8px solid #f3f3f3;
-          border-top: 8px solid #3498db;
-          border-radius: 50%;
-          width: 60px;
-          height: 60px;
-          animation: spin 1s linear infinite;
-      }
-    
-      @keyframes spin {
-          0% { transform: rotate(0deg); }
-          100% { transform: rotate(360deg); }
-      }
-    </style>
-    <style>
-  /* Toast container (top-right on desktop, full width on mobile) */
-  .toast-stack {
-    position: fixed;
-    top: 72px;               /* below your top navbar */
-    right: 16px;
-    z-index: 11000;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    max-width: 360px;
-  }
-  @media (max-width: 640px) {
-    .toast-stack {
-      left: 12px;
-      right: 12px;
-      max-width: none;
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Business Signup</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='assets/style.css') }}" />
+  <style>
+    body {
+      margin: 0;
+      background: #f2f4f7;
+      font-family: "Segoe UI", sans-serif;
     }
+
+    .signup-container {
+      max-width: 480px;
+      margin: 60px auto;
+      background: #faf7f2;
+      padding: 35px;
+      border-radius: 16px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
+    }
+
+    .signup-container h2 {
+      text-align: center;
+      margin-bottom: 30px;
+      color: #2c3e50;
+    }
+
+    .form-group {
+      margin-bottom: 20px;
+    }
+
+    .form-group h2 {
+      text-align: center;
+      margin-bottom: 20px;
+      color: #f1862f;
+      font-size: 30px;
+      font-weight: bold;
+    }
+
+    label {
+      font-weight: 600;
+      display: block;
+      margin-bottom: 8px;
+      color: #333;
+    }
+
+    input[type="text"],
+    input[type="password"],
+    select,
+    textarea {
+      width: 92%;
+      padding: 12px;
+      border: 1px solid #ccc;
+      border-radius: 10px;
+      font-size: 15px;
+      transition: border-color 0.3s;
+    }
+
+    input:focus,
+    textarea:focus {
+      border-color: #007bff;
+      outline: none;
+    }
+
+    .upload-section {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+
+    .upload-section img {
+      width: 120px;
+      height: 120px;
+      border-radius: 50%;
+      object-fit: cover;
+      cursor: pointer;
+      border: 2px solid #ddd;
+      transition: 0.3s;
+    }
+
+    .logina a {
+      color: #f1862f;
+      font-weight: bold;
+      text-decoration: none;
+    }
+
+    #previewImage {
+      margin-top: 10px;
+      width: 100px;
+      height: 100px;
+      object-fit: cover;
+      border-radius: 50%;
+      border: 2px solid #ccc;
+      display: block;
+    }
+
+    #imageInput {
+      display: none;
+    }
+
+    select {
+      width: 100%;
+      padding: 12px;
+      border: 1px solid #ccc;
+      border-radius: 10px;
+      font-size: 15px;
+      background-color: #fff;
+      appearance: none;
+      -webkit-appearance: none;
+      -moz-appearance: none;
+      cursor: pointer;
+      transition: border-color 0.3s;
+    }
+
+    select:focus {
+      border-color: #007bff;
+      outline: none;
+    }
+
+    .gender {
+      position: relative;
+    }
+
+    .gender::after {
+      content: "▼";
+      font-size: 12px;
+      color: #666;
+      position: absolute;
+      right: 10px;
+      top: 50%;
+      transform: translateY(-50%);
+      pointer-events: none;
+    }
+
+    .submit-btn {
+      width: 45%;
+      background-color: #f1862f;
+      color: #fff;
+      padding: 14px;
+      font-size: 16px;
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+      font-weight: bold;
+      transition: background-color 0.3s;
+    }
+
+    .submit-btn:hover {
+      background-color: #218838;
+    }
+
+    .error {
+      margin-top: 15px;
+      color: #dc3545;
+      font-weight: 500;
+      text-align: center;
+    }
+
+    @media (max-width: 600px) {
+      .signup-container {
+        margin: 20px;
+        padding: 25px;
+      }
+
+      .upload-btn {
+        padding: 10px 14px;
+        font-size: 13px;
+      }
+
+      .submit-btn {
+        padding: 12px;
+        font-size: 15px;
+      }
+    }
+
+    #loading-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(255, 255, 255, 0.9);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 9999;
+      visibility: hidden;
+    }
+
+    .spinner {
+      border: 8px solid #f3f3f3;
+      border-top: 8px solid #3498db;
+      border-radius: 50%;
+      width: 60px;
+      height: 60px;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      0% {
+        transform: rotate(0deg);
+      }
+
+      100% {
+        transform: rotate(360deg);
+      }
+    }
+
+    .logoinfo {
+      display: flex;
+      justify-content: center;
+      margin: 20px 0;
+    }
+
+    .logoinfo img {
+      width: 100px;
+      height: 100px;
+      border-radius: 20%;
+      object-fit: cover;
+      border: 2px solid #ddd;
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+    }
+
+    /* 📱 Responsive adjustments */
+    @media (max-width: 600px) {
+      .logoinfo img {
+        width: 90px;
+        height: 90px;
+      }
+    }
+
+    @media (max-width: 400px) {
+      .logoinfo img {
+        width: 50px;
+        height: 50px;
+      }
+    }
+  </style>
+  <style>
+    /* Toast container (top-right on desktop, full width on mobile) */
+    .toast-stack {
+      position: fixed;
+      top: 72px;
+      /* below your top navbar */
+      right: 16px;
+      z-index: 11000;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      max-width: 360px;
+    }
+
+    @media (max-width: 640px) {
+      .toast-stack {
+        left: 12px;
+        right: 12px;
+        max-width: none;
+      }
+    }
+
+    /* Base toast */
+    .toast {
+      display: flex;
+      align-items: start;
+      gap: 12px;
+      padding: 12px 14px;
+      border-radius: 10px;
+      box-shadow: 0 10px 18px rgba(0, 0, 0, .08);
+      border: 1px solid rgba(0, 0, 0, .08);
+      background: #fff;
+      color: #222;
+      animation: slideIn .25s ease-out;
+    }
+
+    @keyframes slideIn {
+      from {
+        transform: translateY(-6px);
+        opacity: 0;
+      }
+
+      to {
+        transform: translateY(0);
+        opacity: 1;
+      }
+    }
+
+    /* Variants */
+    .toast--success {
+      border-color: #c7f3d2;
+      background: #f1fdf4;
+    }
+
+    .toast--error {
+      border-color: #ffd1d1;
+      background: #fff5f5;
+    }
+
+    .toast--warning {
+      border-color: #ffe9b3;
+      background: #fffaf0;
+    }
+
+    .toast--info {
+      border-color: #cfe6ff;
+      background: #f5faff;
+    }
+
+    /* Accent dot */
+    .toast__dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+      margin-top: 6px;
+    }
+
+    .toast--success .toast__dot {
+      background: #22c55e;
+    }
+
+    .toast--error .toast__dot {
+      background: #ef4444;
+    }
+
+    .toast--warning .toast__dot {
+      background: #f59e0b;
+    }
+
+    .toast--info .toast__dot {
+      background: #3b82f6;
+    }
+
+    /* Content */
+    .toast__content {
+      flex: 1;
+    }
+
+    .toast__title {
+      font-weight: 700;
+      margin-bottom: 2px;
+      font-size: 14px;
+    }
+
+    .toast__msg {
+      font-size: 13px;
+      line-height: 1.35;
+    }
+
+    /* Close (×) */
+    .toast__close {
+      cursor: pointer;
+      border: none;
+      background: transparent;
+      font-size: 18px;
+      line-height: 1;
+      color: #555;
+      padding: 0 4px;
+      align-self: start;
+    }
+
+    .toast__close:hover {
+      color: #000;
+    }
+    /* 3:9 ratio row */
+.upload-grid {
+    display: grid;
+    grid-template-columns: 6fr  6fr;
+    gap: 20px;
+    align-items: center;
+    margin-bottom: 20px;
   }
 
-  /* Base toast */
-  .toast {
-    display: flex;
-    align-items: start;
-    gap: 12px;
-    padding: 12px 14px;
-    border-radius: 10px;
-    box-shadow: 0 10px 18px rgba(0,0,0,.08);
-    border: 1px solid rgba(0,0,0,.08);
-    background: #fff;
-    color: #222;
-    animation: slideIn .25s ease-out;
-  }
-  @keyframes slideIn {
-    from { transform: translateY(-6px); opacity: 0; }
-    to   { transform: translateY(0);     opacity: 1; }
+  .upload-box {
+    text-align: center;
   }
 
-  /* Variants */
-  .toast--success { border-color: #c7f3d2; background: #f1fdf4; }
-  .toast--error   { border-color: #ffd1d1; background: #fff5f5; }
-  .toast--warning { border-color: #ffe9b3; background: #fffaf0; }
-  .toast--info    { border-color: #cfe6ff; background: #f5faff; }
-
-  /* Accent dot */
-  .toast__dot {
-    width: 10px; height: 10px; border-radius: 999px; margin-top: 6px;
-  }
-  .toast--success .toast__dot { background: #22c55e; }
-  .toast--error   .toast__dot { background: #ef4444; }
-  .toast--warning .toast__dot { background: #f59e0b; }
-  .toast--info    .toast__dot { background: #3b82f6; }
-
-  /* Content */
-  .toast__content { flex: 1; }
-  .toast__title   { font-weight: 700; margin-bottom: 2px; font-size: 14px; }
-  .toast__msg     { font-size: 13px; line-height: 1.35; }
-
-  /* Close (×) */
-  .toast__close {
+  .upload-box img {
+    width: 90%;
+    aspect-ratio: 3/2; /* fixed ratio */
+    object-fit: cover;
+    border: 2px dashed #ccc;
+    border-radius: 12px;
     cursor: pointer;
-    border: none;
-    background: transparent;
-    font-size: 18px;
-    line-height: 1;
-    color: #555;
-    padding: 0 4px;
-    align-self: start;
+    transition: 0.3s;
   }
-  .toast__close:hover { color: #000; }
-</style>
+
+  .upload-box img:hover {
+    border-color: #007bff;
+    transform: scale(1.02);
+  }
+
+  .upload-box input {
+    display: none;
+  }
+
+  .upload-box label {
+    display: block;
+    margin-top: 8px;
+    font-weight: bold;
+    color: #333;
+  }  </style>
 
 </head>
+
 <body>
-    <div class="signup-container">
-        <h2>Business Signup</h2>
-        {% with messages = get_flashed_messages(with_categories=true) %}
-  {% if messages %}
+  <div class="signup-container">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
     <div>
       {% for category, message in messages %}
-        <div class="alert alert-{{ category }}">{{ message }}</div>
+      <div class="alert alert-{{ category }}">{{ message }}</div>
       {% endfor %}
     </div>
-  {% endif %}
-{% endwith %}
-        <form method="POST" enctype="multipart/form-data">
-            <div class="form-group">
-                <label for="imageInput" class="upload-label">Upload Profile Picture</label>
-                <input type="file" id="imageInput" name="profile_pic" class="hidden-input" accept="image/*" required>
-                <img id="previewImage" alt="Image Preview">
-            </div>
-
-            <div class="form-group">
-                <label>Username</label>
-                <input type="text" name="username" required>
-            </div>
-
-            <div class="form-group">
-                <label>Password</label>
-                <input type="password" name="password" required>
-            </div>
-
-            <div class="form-group">
-                <label>Gender</label>
-                <select name="gender" required>
-                    <option>Male</option>
-                    <option>Female</option>
-                    <option>Other</option>
-                </select>
-            </div>
-
-            <div class="form-group">
-                <label>Business Type</label>
-                <select name="business_type">
-                    <optgroup label="House">
-                        <option>House Cleaning</option>
-                        <option>Room Cleaning</option>
-                        <option>Bathroom Cleaning</option>
-                        <option>Kitchen Cleaning</option>
-                    </optgroup>
-                    <option>Plumbing</option>
-                    <optgroup label="Electrician">
-                        <option>Motor Repair</option>
-                        <option>Electrician</option>
-                    </optgroup>
-                    <optgroup label="Vehicle Repair">
-                        <option>Two wheeler</option>
-                        <option>Three wheeler</option>
-                        <option>Four wheeler</option>
-                        <option>Heavy Vehicle</option>
-                    </optgroup>
-                </select>
-            </div>
-
-            <div class="form-group">
-                <label>Location</label>
-                <select name="location" required>
-                    <option>Hyderabad</option>
-                    <option>Warangal</option>
-                    <option>Hanamkonda</option>
-                    <option>Kazipet</option>
-                </select>
-            </div>
-
-            <div class="form-group">
-                <label>Phone Number</label>
-                <input type="text" name="phone" required>
-            </div>
-
-            <div class="form-group">
-                <label>Email</label>
-                <input type="text" name="gmail" pattern="[a-zA-Z0-9._%+-]+@gmail\.com"       required>
-            </div>
-
-            <div class="form-group">
-                <label>Bio</label>
-                <textarea name="bio" rows="3"></textarea>
-            </div>
-
-            <div class="form-group">
-                <label>Price</label>
-                <input type="text" name="price" placeholder="Enter your price">
-            </div>
-
-            <button type="submit" class="submit-btn">Signup</button>
-        </form>
-    </div>
-    <!-- Loading Overlay -->
-<div id="loading-overlay">
-    <div class="spinner"></div>
-</div>
-<div id="toastStack" class="toast-stack">
-  {# Render Flask flashed messages if any #}
-  {% with messages = get_flashed_messages(with_categories=True) %}
-    {% if messages %}
-      {% for category, message in messages %}
-        {% set cls = 'toast--info' %}
-        {% if category in ['success','error','warning','info'] %}
-          {% set cls = 'toast--' ~ category %}
-        {% endif %}
-        <div class="toast {{ cls }}">
-          <span class="toast__dot"></span>
-          <div class="toast__content">
-            <div class="toast__title">
-              {{ category|capitalize if category else 'Notice' }}
-            </div>
-            <div class="toast__msg">{{ message }}</div>
-          </div>
-          <button class="toast__close" aria-label="Close" onclick="this.parentElement.remove()">×</button>
-        </div>
-      {% endfor %}
     {% endif %}
-  {% endwith %}
+    {% endwith %}
+    <form method="POST" enctype="multipart/form-data">
+      <div class="logoinfo">
+        <img src="{{ url_for('static', filename='assets/mrhelperlogo.jpg') }}" alt="Logo" width="50" height="50">
+      </div>
+      <div class="form-group upload-section">
+        <center>
+          <h2>BUSINESS SIGN UP</h2>
+          <img id="previewImage"
+     src="{{ url_for('static', filename='assets/default_camera.jpg') }}"
+     alt="Profile Picture"
+     onclick="document.getElementById('imageInput').click();" />
+
+<input type="file"
+       id="imageInput"
+       accept="image/*"
+       capture="environment"
+       name="profile_pic"
+       onchange="previewImage(this, 'previewImage')" />
+
+<label>Profile Picture</label>
+        </center>
+      </div>
+
+      {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+      <div>
+        {% for category, message in messages %}
+        <div class="alert alert-{{ category }}">{{ message }}</div>
+        {% endfor %}
+      </div>
+      {% endif %}
+      {% endwith %}
+
+      <div class="form-group">
+        <input type="text" placeholder="Owner Name" name="username" required>
+      </div>
+
+      <div class="form-group">
+        <input type="password" placeholder="password" name="password" required>
+      </div>
+
+      <div class="form-group gender">
+        <select id="gender" name="gender" required>
+          <option value="" class="genderopt" disabled selected>Select your gender</option>
+          <option value="male">Male</option>
+          <option value="female">Female</option>
+          <option value="other">Other</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <select name="business_type" id="businessType" required>
+          <option value="" disabled selected>Select business type</option>
+          <option value="Cleaning">Cleaning</option>
+          <option value="Plumbing">Plumbing</option>
+          <option value="Electrical">Electrical</option>
+          <option value="Vehicle Repair">Vehicle Repair</option>
+          <option value="Painting">Painting</option>
+          <option value="Carpentry">Carpentry</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <select name="service_type" id="serviceType" required>
+          <option value="" disabled selected>Select service type</option>
+        </select>
+      </div>
+      
+      <div class="form-group">
+                <input type="text" placeholder="House No / Flat No" name="housenumber" required />
+            </div>
+
+            <div class="form-group">
+                <input type="text" placeholder="Street" name="street" required />
+            </div>
+
+            <div class="form-group">
+                <input type="text" placeholder="Landmark" name="landmark" />
+            </div>
+
+      <div class="form-group">
+        <select name="location" required>
+          <option>Hyderabad</option>
+          <option>Warangal</option>
+          <option>Hanamkonda</option>
+          <option>Kazipet</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <input type="text" placeholder="Phone Number" name="phone" required>
+      </div>
+
+      <div class="form-group">
+        <input type="text" placeholder="Email" name="gmail" pattern="[a-zA-Z0-9._%+-]+@gmail\.com" required>
+      </div>
+
+      <div class="form-group">
+        <textarea name="bio" placeholder="Bio" rows="3"></textarea>
+      </div>
+
+      <div class="form-group">
+        <input type="text" name="price" placeholder="Starting price">
+      </div>
+      
+<div class="upload-grid">
+  <!-- Aadhaar Upload -->
+  <div class="upload-box">
+    <img id="aadhaarPreview"
+         src="{{ url_for('static', filename='assets/default_camera.jpg') }}"
+         alt="Aadhaar Card"
+         onclick="document.getElementById('aadhaarInput').click();" />
+    <input type="file" id="aadhaarInput" accept="image/*" name="aadhaar_card"
+           onchange="previewImage(this, 'aadhaarPreview')" />
+    <label>Aadhaar Card</label>
+  </div>
+
+  <!-- PAN Upload -->
+  <div class="upload-box">
+    <img id="panPreview"
+         src="{{ url_for('static', filename='assets/default_camera.jpg') }}"
+         alt="PAN Card"
+         onclick="document.getElementById('panInput').click();" />
+    <input type="file" id="panInput" accept="image/*" name="pan_card"
+           onchange="previewImage(this, 'panPreview')" />
+    <label>PAN Card</label>
+  </div>
 </div>
+
+      <center><button type="submit" class="submit-btn">Signup</button></center>
+    </form>
+  </div>
+  <!-- Loading Overlay -->
+  <div id="loading-overlay">
+    <div class="spinner"></div>
+  </div>
+  <div id="toastStack" class="toast-stack">
+    {# Render Flask flashed messages if any #}
+    {% with messages = get_flashed_messages(with_categories=True) %}
+    {% if messages %}
+    {% for category, message in messages %}
+    {% set cls = 'toast--info' %}
+    {% if category in ['success','error','warning','info'] %}
+    {% set cls = 'toast--' ~ category %}
+    {% endif %}
+    <div class="toast {{ cls }}">
+      <span class="toast__dot"></span>
+      <div class="toast__content">
+        <div class="toast__title">
+          {{ category|capitalize if category else 'Notice' }}
+        </div>
+        <div class="toast__msg">{{ message }}</div>
+      </div>
+      <button class="toast__close" aria-label="Close" onclick="this.parentElement.remove()">×</button>
+    </div>
+    {% endfor %}
+    {% endif %}
+    {% endwith %}
+  </div>
+
+  <script>
+    function showToast(message, type = 'info', title = null, autoHideMs = 5000) {
+      const stack = document.getElementById('toastStack');
+      const wrapper = document.createElement('div');
+      wrapper.className = `toast toast--${type}`;
+
+      const dot = document.createElement('span');
+      dot.className = 'toast__dot';
+
+      const content = document.createElement('div');
+      content.className = 'toast__content';
+
+      const heading = document.createElement('div');
+      heading.className = 'toast__title';
+      heading.textContent = title || type.charAt(0).toUpperCase() + type.slice(1);
+
+      const msg = document.createElement('div');
+      msg.className = 'toast__msg';
+      msg.textContent = message;
+
+      const close = document.createElement('button');
+      close.className = 'toast__close';
+      close.setAttribute('aria-label', 'Close');
+      close.textContent = '×';
+      close.addEventListener('click', () => wrapper.remove());
+
+      content.appendChild(heading);
+      content.appendChild(msg);
+      wrapper.appendChild(dot);
+      wrapper.appendChild(content);
+      wrapper.appendChild(close);
+      stack.appendChild(wrapper);
+
+      if (autoHideMs && autoHideMs > 0) {
+        setTimeout(() => wrapper.remove(), autoHideMs);
+      }
+    }
+
+    window.addEventListener('error', (e) => {
+      showToast('Something went wrong while loading the page.', 'error', 'Error');
+    });
+    window.addEventListener('unhandledrejection', (e) => {
+      showToast('A background action failed. Please try again.', 'warning', 'Heads up');
+    });
+
+    window.addEventListener('load', () => {
+      const loader = document.getElementById('loading-overlay');
+      if (!loader) return;
+      setTimeout(() => {
+        const isVisible = loader.style.visibility !== 'hidden' && getComputedStyle(loader).visibility !== 'hidden';
+        if (isVisible) {
+          loader.style.visibility = 'hidden';
+          showToast('We had trouble finishing the load. Some data may be cached.', 'warning', 'Slow Connection');
+        }
+      }, 8000);
+    });
+  </script>
+
+  <script>
+    document.getElementById("imageInput").addEventListener("change", function () {
+      let file = this.files[0];
+      if (file) {
+        let reader = new FileReader();
+        reader.onload = function (e) {
+          let img = document.getElementById("previewImage");
+          img.src = e.target.result;
+          img.style.display = "block";
+        }
+        reader.readAsDataURL(file);
+      }
+    });
+  </script>
+  <script>
+    const loader = document.getElementById("loading-overlay");
+
+    window.addEventListener("beforeunload", () => {
+      loader.style.visibility = "visible";
+    });
+
+    window.addEventListener("load", () => {
+      loader.style.visibility = "hidden";
+    });
+
+    window.addEventListener("pageshow", (event) => {
+      loader.style.visibility = "hidden";
+    });
+
+    window.addEventListener("pagehide", () => {
+      loader.style.visibility = "visible";
+    });
+  </script>
 
 <script>
-  // Programmatic toast (for JS-detected failures)
-  function showToast(message, type = 'info', title = null, autoHideMs = 5000) {
-    const stack = document.getElementById('toastStack');
-    const wrapper = document.createElement('div');
-    wrapper.className = `toast toast--${type}`;
+  const businessServices = {
+    "Cleaning": ["House Cleaning", "Room Cleaning", "Kitchen Cleaning", "Bathroom Cleaning"],
+    "Plumbing": ["Pipe Fixing", "Tap Installation", "Bathroom Fittings"],
+    "Electrical": ["Fan Repair", "Wiring", "AC Service", "Lighting Installation"],
+    "Vehicle Repair": ["Bike Repair", "Car Repair", "Battery Service"],
+    "Painting": ["Wall Painting", "Interior Painting", "Exterior Painting"],
+    "Carpentry": ["Furniture Repair", "Woodwork", "Door/Window Fittings"]
+  };
 
-    const dot = document.createElement('span');
-    dot.className = 'toast__dot';
+  const businessType = document.getElementById("businessType");
+  const serviceType = document.getElementById("serviceType");
 
-    const content = document.createElement('div');
-    content.className = 'toast__content';
+  businessType.addEventListener("change", function () {
+    const selected = this.value;
+    serviceType.innerHTML = "<option value='' disabled selected>Select service type</option>";
+    if (businessServices[selected]) {
+      businessServices[selected].forEach(service => {
+        const option = document.createElement("option");
+        option.value = service;
+        option.textContent = service;
+        serviceType.appendChild(option);
+      });
+    }
+  });
 
-    const heading = document.createElement('div');
-    heading.className = 'toast__title';
-    heading.textContent = title || type.charAt(0).toUpperCase() + type.slice(1);
+  // Aadhaar preview
+  document.getElementById("aadhaarInput").addEventListener("change", function () {
+    let file = this.files[0];
+    if (file) {
+      let reader = new FileReader();
+      reader.onload = e => document.getElementById("aadhaarPreview").src = e.target.result;
+      reader.readAsDataURL(file);
+    }
+  });
 
-    const msg = document.createElement('div');
-    msg.className = 'toast__msg';
-    msg.textContent = message;
-
-    const close = document.createElement('button');
-    close.className = 'toast__close';
-    close.setAttribute('aria-label', 'Close');
-    close.textContent = '×';
-    close.addEventListener('click', () => wrapper.remove());
-
-    content.appendChild(heading);
-    content.appendChild(msg);
-    wrapper.appendChild(dot);
-    wrapper.appendChild(content);
-    wrapper.appendChild(close);
-    stack.appendChild(wrapper);
-
-    if (autoHideMs && autoHideMs > 0) {
-      setTimeout(() => wrapper.remove(), autoHideMs);
+  // PAN preview
+  document.getElementById("panInput").addEventListener("change", function () {
+    let file = this.files[0];
+    if (file) {
+      let reader = new FileReader();
+      reader.onload = e => document.getElementById("panPreview").src = e.target.result;
+      reader.readAsDataURL(file);
+    }
+  });
+</script>
+<script>
+  function previewImage(input, previewId) {
+    const file = input.files[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = e => {
+        document.getElementById(previewId).src = e.target.result;
+      };
+      reader.readAsDataURL(file);
     }
   }
-
-  // Catch generic JS errors & promise rejections → show error toast
-  window.addEventListener('error', (e) => {
-    showToast('Something went wrong while loading the page.', 'error', 'Error');
-  });
-  window.addEventListener('unhandledrejection', (e) => {
-    showToast('A background action failed. Please try again.', 'warning', 'Heads up');
-  });
-
-  // Optional: if your loader might get stuck, auto clear after 8s and show toast
-  // Update '#loading-overlay' to your actual loader element id
-  window.addEventListener('load', () => {
-    const loader = document.getElementById('loading-overlay');
-    if (!loader) return;
-    // Safety timeout: if still visible after 8s, hide and alert
-    setTimeout(() => {
-      const isVisible = loader.style.visibility !== 'hidden' && getComputedStyle(loader).visibility !== 'hidden';
-      if (isVisible) {
-        loader.style.visibility = 'hidden';
-        showToast('We had trouble finishing the load. Some data may be cached.', 'warning', 'Slow Connection');
-      }
-    }, 8000);
-  });
 </script>
-
-     <script>
-            document.getElementById("imageInput").addEventListener("change", function() {
-                let file = this.files[0];
-                if (file) {
-                    let reader = new FileReader();
-                    reader.onload = function(e) {
-                        let img = document.getElementById("previewImage");
-                        img.src = e.target.result;
-                        img.style.display = "block";
-                    }
-                    reader.readAsDataURL(file);
-                }
-            });
-        </script>
 <script>
-  const loader = document.getElementById("loading-overlay");
-
-  // Show loader before leaving page
-  window.addEventListener("beforeunload", () => {
-      loader.style.visibility = "visible";
-  });
-
-  // Hide loader when page fully loads
-  window.addEventListener("load", () => {
-      loader.style.visibility = "hidden";
-  });
-
-  // Handle when navigating with back/forward buttons (bfcache restore)
-  window.addEventListener("pageshow", (event) => {
-      loader.style.visibility = "hidden";  // Ensure loader is hidden when page is restored
-  });
-
-  window.addEventListener("pagehide", () => {
-      loader.style.visibility = "visible"; // Show loader when leaving
-  });
+  function previewImage(input, previewId) {
+    const file = input.files[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = e => {
+        document.getElementById(previewId).src = e.target.result;
+      };
+      reader.readAsDataURL(file);
+    }
+  }
 </script>
-
 </body>
+
 </html>
