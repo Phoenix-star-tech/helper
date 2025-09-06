@@ -26,7 +26,7 @@ cloudinary.config(
 
 
 app = Flask(__name__)
-app.secret_key = 'karthik57'
+app.secret_key = os.environ.get("SECRET_KEY", "fallback_secret_key")
 
 
 # Base paths
