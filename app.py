@@ -16,6 +16,8 @@ import cloudinary.api
 from functools import wraps
 import uuid
 import random
+from datetime import timedelta
+
 
 # after your other imports, before using Cloudinary
 cloudinary.config(
@@ -28,6 +30,12 @@ cloudinary.config(
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "fallback_secret_key")
 
+# Keep sessions alive for 30 days
+app.permanent_session_lifetime = timedelta(days=30)
+
+@app.before_request
+def make_session_permanent():
+    session.permanent = True
 
 # Base paths
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
@@ -127,7 +135,7 @@ def root():
     if 'username' in session:
         if session['username'] == 'adime':
             return redirect(url_for('admin_dashboard'))
-        return redirect(url_for('home'))
+        return redirect(url_for('login'))
     return redirect(url_for('login'))
 
 @app.route('/login', methods=['GET', 'POST'])
