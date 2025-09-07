@@ -149,7 +149,7 @@ html {
 
 .helpline i {
   transform: rotate(90deg);
-  animation: ring 1.5s infinite;
+  
 }
 
 @keyframes ring {
