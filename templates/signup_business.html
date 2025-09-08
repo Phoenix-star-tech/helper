@@ -5,6 +5,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Business Signup</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <link rel="stylesheet" href="{{ url_for('static', filename='assets/style.css') }}" />
   <style>
     body {
@@ -189,6 +190,10 @@
       visibility: hidden;
     }
 
+    .loading-overlay2 {
+      text-align: center;
+    }
+
     .spinner {
       border: 8px solid #f3f3f3;
       border-top: 8px solid #3498db;
@@ -362,44 +367,73 @@
     .toast__close:hover {
       color: #000;
     }
+
     /* 3:9 ratio row */
-.upload-grid {
-    display: grid;
-    grid-template-columns: 6fr  6fr;
-    gap: 20px;
-    align-items: center;
-    margin-bottom: 20px;
-  }
+    .upload-grid {
+      display: grid;
+      grid-template-columns: 6fr 6fr;
+      gap: 20px;
+      align-items: center;
+      margin-bottom: 20px;
+    }
 
-  .upload-box {
-    text-align: center;
-  }
+    .upload-box {
+      text-align: center;
+    }
 
-  .upload-box img {
-    width: 90%;
-    aspect-ratio: 3/2; /* fixed ratio */
-    object-fit: cover;
-    border: 2px dashed #ccc;
-    border-radius: 12px;
-    cursor: pointer;
-    transition: 0.3s;
-  }
+    .upload-box img {
+      width: 90%;
+      aspect-ratio: 3/2;
+      /* fixed ratio */
+      object-fit: cover;
+      border: 2px dashed #ccc;
+      border-radius: 12px;
+      cursor: pointer;
+      transition: 0.3s;
+    }
 
-  .upload-box img:hover {
-    border-color: #007bff;
-    transform: scale(1.02);
-  }
+    .upload-box img:hover {
+      border-color: #007bff;
+      transform: scale(1.02);
+    }
 
-  .upload-box input {
-    display: none;
-  }
+    .upload-box input {
+      display: none;
+    }
 
-  .upload-box label {
-    display: block;
-    margin-top: 8px;
-    font-weight: bold;
-    color: #333;
-  }  </style>
+    .upload-box label {
+      display: block;
+      margin-top: 8px;
+      font-weight: bold;
+      color: #333;
+    }
+
+    .password-wrapper {
+      position: relative;
+      display: flex;
+      align-items: center;
+    }
+
+    .password-wrapper input {
+      width: 100%;
+      padding-right: 40px;
+      /* space for eye icon */
+      transition: all 0.3s ease-in-out;
+    }
+
+    .toggle-password {
+      position: absolute;
+      right: 10px;
+      cursor: pointer;
+      font-size: 18px;
+      color: #666;
+      transition: color 0.3s ease-in-out;
+    }
+
+    .toggle-password:hover {
+      color: #000;
+    }
+  </style>
 
 </head>
 
@@ -421,19 +455,13 @@
       <div class="form-group upload-section">
         <center>
           <h2>BUSINESS SIGN UP</h2>
-          <img id="previewImage"
-     src="{{ url_for('static', filename='assets/default_camera.jpg') }}"
-     alt="Profile Picture"
-     onclick="document.getElementById('imageInput').click();" />
+          <img id="previewImage" src="{{ url_for('static', filename='assets/default_camera.jpg') }}"
+            alt="Profile Picture" onclick="document.getElementById('imageInput').click();" />
 
-<input type="file"
-       id="imageInput"
-       accept="image/*"
-       capture="environment"
-       name="profile_pic"
-       onchange="previewImage(this, 'previewImage')" />
+          <input type="file" id="imageInput" accept="image/*" capture="environment" name="profile_pic"
+            onchange="previewImage(this, 'previewImage')" required />
 
-<label>Profile Picture</label>
+          <label>Profile Picture</label>
         </center>
       </div>
 
@@ -451,8 +479,9 @@
         <input type="text" placeholder="Owner Name" name="username" required>
       </div>
 
-      <div class="form-group">
-        <input type="password" placeholder="password" name="password" required>
+      <div class="form-group password-wrapper">
+        <input type="password" placeholder="Password" name="password" id="password" required>
+        <i class="fas fa-eye toggle-password" id="togglePassword"></i>
       </div>
 
       <div class="form-group gender">
@@ -464,7 +493,7 @@
         </select>
       </div>
 
-      <div class="form-group">
+      <div class="form-group gender">
         <select name="business_type" id="businessType" required>
           <option value="" disabled selected>Select business type</option>
           <option value="Cleaning">Cleaning</option>
@@ -476,26 +505,27 @@
         </select>
       </div>
 
-      <div class="form-group">
+      <div class="form-group gender">
         <select name="service_type" id="serviceType" required>
           <option value="" disabled selected>Select service type</option>
         </select>
       </div>
-      
-      <div class="form-group">
-                <input type="text" placeholder="House No / Flat No" name="housenumber" required />
-            </div>
-
-            <div class="form-group">
-                <input type="text" placeholder="Street" name="street" required />
-            </div>
-
-            <div class="form-group">
-                <input type="text" placeholder="Landmark" name="landmark" />
-            </div>
 
       <div class="form-group">
+        <input type="text" placeholder="House No / Flat No" name="housenumber" required />
+      </div>
+
+      <div class="form-group">
+        <input type="text" placeholder="Street" name="street" required />
+      </div>
+
+      <div class="form-group">
+        <input type="text" placeholder="Landmark" name="landmark" />
+      </div>
+
+      <div class="form-group gender">
         <select name="location" required>
+          <option value="" disabled selected>Select Your City</option>
           <option>Hyderabad</option>
           <option>Warangal</option>
           <option>Hanamkonda</option>
@@ -504,7 +534,7 @@
       </div>
 
       <div class="form-group">
-        <input type="text" placeholder="Phone Number" name="phone" required>
+        <input type="text" placeholder="Phone Number" pattern="[0-9]{10}" maxlength="10" name="phone" required>
       </div>
 
       <div class="form-group">
@@ -516,40 +546,47 @@
       </div>
 
       <div class="form-group">
-        <input type="text" name="price" placeholder="Starting price">
+        <input type="text" name="price" placeholder="Starting price" required>
       </div>
-      
-<div class="upload-grid">
-  <!-- Aadhaar Upload -->
-  <div class="upload-box">
-    <img id="aadhaarPreview"
-         src="{{ url_for('static', filename='assets/default_camera.jpg') }}"
-         alt="Aadhaar Card"
-         onclick="document.getElementById('aadhaarInput').click();" />
-    <input type="file" id="aadhaarInput" accept="image/*" name="aadhaar_card"
-           onchange="previewImage(this, 'aadhaarPreview')" />
-    <label>Aadhaar Card</label>
-  </div>
 
-  <!-- PAN Upload -->
-  <div class="upload-box">
-    <img id="panPreview"
-         src="{{ url_for('static', filename='assets/default_camera.jpg') }}"
-         alt="PAN Card"
-         onclick="document.getElementById('panInput').click();" />
-    <input type="file" id="panInput" accept="image/*" name="pan_card"
-           onchange="previewImage(this, 'panPreview')" />
-    <label>PAN Card</label>
-  </div>
-</div>
+      <div class="upload-grid">
+        <!-- Aadhaar Upload -->
+        <div class="upload-box">
+          <img id="aadhaarPreview" src="{{ url_for('static', filename='assets/aadhaar.jpg') }}" alt="Aadhaar Card"
+            onclick="document.getElementById('aadhaarInput').click();" />
+          <input type="file" id="aadhaarInput" accept="image/*" name="aadhaar_card"
+            onchange="previewImage(this, 'aadhaarPreview')" required />
+          <label>Aadhaar Card</label>
+        </div>
+
+        <!-- PAN Upload -->
+        <div class="upload-box">
+          <img id="panPreview" src="{{ url_for('static', filename='assets/pan.jpg') }}" alt="PAN Card"
+            onclick="document.getElementById('panInput').click();" />
+          <input type="file" id="panInput" accept="image/*" name="pan_card" onchange="previewImage(this, 'panPreview')"
+            required />
+          <label>PAN Card</label>
+        </div>
+      </div>
 
       <center><button type="submit" class="submit-btn">Signup</button></center>
+      <center>
+        <p class="logina">Already have an account? <a href="{{ url_for('login') }}">Login</a></p>
+      </center>
+
     </form>
   </div>
   <!-- Loading Overlay -->
-  <div id="loading-overlay">
-    <div class="spinner"></div>
-  </div>
+  <center>
+    <div id="loading-overlay">
+      <div class="loading-overlay2">
+        <center>
+          <div class="spinner"></div>
+        </center><br>
+        <h5>Plese don't close app while loading...</h5>
+      </div>
+    </div>
+  </center>
   <div id="toastStack" class="toast-stack">
     {# Render Flask flashed messages if any #}
     {% with messages = get_flashed_messages(with_categories=True) %}
@@ -666,76 +703,96 @@
     });
   </script>
 
-<script>
-  const businessServices = {
-    "Cleaning": ["House Cleaning", "Room Cleaning", "Kitchen Cleaning", "Bathroom Cleaning"],
-    "Plumbing": ["Pipe Fixing", "Tap Installation", "Bathroom Fittings"],
-    "Electrical": ["Fan Repair", "Wiring", "AC Service", "Lighting Installation"],
-    "Vehicle Repair": ["Bike Repair", "Car Repair", "Battery Service"],
-    "Painting": ["Wall Painting", "Interior Painting", "Exterior Painting"],
-    "Carpentry": ["Furniture Repair", "Woodwork", "Door/Window Fittings"]
-  };
+  <script>
+    const businessServices = {
+      "Cleaning": ["House Cleaning", "Room Cleaning", "Kitchen Cleaning", "Bathroom Cleaning"],
+      "Plumbing": ["Pipe Fixing", "Tap Installation", "Bathroom Fittings"],
+      "Electrical": ["Fan Repair", "Wiring", "AC Service", "Lighting Installation"],
+      "Vehicle Repair": ["Bike Repair", "Car Repair", "Battery Service"],
+      "Painting": ["Wall Painting", "Interior Painting", "Exterior Painting"],
+      "Carpentry": ["Furniture Repair", "Woodwork", "Door/Window Fittings"]
+    };
 
-  const businessType = document.getElementById("businessType");
-  const serviceType = document.getElementById("serviceType");
+    const businessType = document.getElementById("businessType");
+    const serviceType = document.getElementById("serviceType");
 
-  businessType.addEventListener("change", function () {
-    const selected = this.value;
-    serviceType.innerHTML = "<option value='' disabled selected>Select service type</option>";
-    if (businessServices[selected]) {
-      businessServices[selected].forEach(service => {
-        const option = document.createElement("option");
-        option.value = service;
-        option.textContent = service;
-        serviceType.appendChild(option);
-      });
-    }
-  });
+    businessType.addEventListener("change", function () {
+      const selected = this.value;
+      serviceType.innerHTML = "<option value='' disabled selected>Select service type</option>";
+      if (businessServices[selected]) {
+        businessServices[selected].forEach(service => {
+          const option = document.createElement("option");
+          option.value = service;
+          option.textContent = service;
+          serviceType.appendChild(option);
+        });
+      }
+    });
 
-  // Aadhaar preview
-  document.getElementById("aadhaarInput").addEventListener("change", function () {
-    let file = this.files[0];
-    if (file) {
-      let reader = new FileReader();
-      reader.onload = e => document.getElementById("aadhaarPreview").src = e.target.result;
-      reader.readAsDataURL(file);
-    }
-  });
+    // Aadhaar preview
+    document.getElementById("aadhaarInput").addEventListener("change", function () {
+      let file = this.files[0];
+      if (file) {
+        let reader = new FileReader();
+        reader.onload = e => document.getElementById("aadhaarPreview").src = e.target.result;
+        reader.readAsDataURL(file);
+      }
+    });
 
-  // PAN preview
-  document.getElementById("panInput").addEventListener("change", function () {
-    let file = this.files[0];
-    if (file) {
-      let reader = new FileReader();
-      reader.onload = e => document.getElementById("panPreview").src = e.target.result;
-      reader.readAsDataURL(file);
+    // PAN preview
+    document.getElementById("panInput").addEventListener("change", function () {
+      let file = this.files[0];
+      if (file) {
+        let reader = new FileReader();
+        reader.onload = e => document.getElementById("panPreview").src = e.target.result;
+        reader.readAsDataURL(file);
+      }
+    });
+  </script>
+  <script>
+    function previewImage(input, previewId) {
+      const file = input.files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = e => {
+          document.getElementById(previewId).src = e.target.result;
+        };
+        reader.readAsDataURL(file);
+      }
     }
-  });
-</script>
-<script>
-  function previewImage(input, previewId) {
-    const file = input.files[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = e => {
-        document.getElementById(previewId).src = e.target.result;
-      };
-      reader.readAsDataURL(file);
+  </script>
+  <script>
+    function previewImage(input, previewId) {
+      const file = input.files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = e => {
+          document.getElementById(previewId).src = e.target.result;
+        };
+        reader.readAsDataURL(file);
+      }
     }
-  }
-</script>
-<script>
-  function previewImage(input, previewId) {
-    const file = input.files[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = e => {
-        document.getElementById(previewId).src = e.target.result;
-      };
-      reader.readAsDataURL(file);
-    }
-  }
-</script>
+  </script>
+  <script>
+    const passwordInput = document.getElementById("password");
+    const togglePassword = document.getElementById("togglePassword");
+
+    togglePassword.addEventListener("click", () => {
+      const type = passwordInput.getAttribute("type") === "password" ? "text" : "password";
+      passwordInput.setAttribute("type", type);
+
+      // Toggle eye/eye-slash icon
+      togglePassword.classList.toggle("fa-eye");
+      togglePassword.classList.toggle("fa-eye-slash");
+
+      // Small shake animation when toggling
+      passwordInput.style.transition = "transform 0.2s";
+      passwordInput.style.transform = "scale(1.05)";
+      setTimeout(() => {
+        passwordInput.style.transform = "scale(1)";
+      }, 200);
+    });
+  </script>
 </body>
 
 </html>
