@@ -31,7 +31,7 @@ app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "fallback_secret_key")
 
 # Keep sessions alive for 30 days
-app.permanent_session_lifetime = timedelta(days=30)
+app.permanent_session_lifetime = timedelta(days=365*10)
 
 @app.before_request
 def make_session_permanent():
