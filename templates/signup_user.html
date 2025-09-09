@@ -265,6 +265,118 @@
         .toggle-password:hover {
             color: #000;
         }
+            .toast-stack {
+      position: fixed;
+      top: 35%;
+      left: 50%;
+      z-index: 11000;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      max-width: 360px;
+    }
+
+    @media (max-width: 640px) {
+      .toast-stack {
+        left: 12px;
+        right: 12px;
+        max-width: none;
+      }
+    }
+
+    /* Base toast */
+    .toast {
+      display: flex;
+      align-items: start;
+      gap: 12px;
+      padding: 12px 14px;
+      border-radius: 10px;
+      box-shadow: 0 10px 18px rgba(0, 0, 0, .08);
+      border: 1px solid rgba(0, 0, 0, .08);
+      background: #fff;
+      color: #222;
+      animation: slideIn .25s ease-out;
+    }
+
+    @keyframes slideIn {
+      from {
+        transform: translateY(-6px);
+        opacity: 0;
+      }
+
+      to {
+        transform: translateY(0);
+        opacity: 1;
+      }
+    }
+
+    /* Variants */
+    .toast--success {
+      border-color: #c7f3d2;
+      background: #f1fdf4;
+    }
+
+    .toast--error {
+      border-color: #ffd1d1;
+      background: #fff5f5;
+    }
+
+    .toast--warning {
+      border-color: #ffe9b3;
+      background: #fffaf0;
+    }
+
+    .toast--info {
+      border-color: #cfe6ff;
+      background: #f5faff;
+    }
+
+    .toast--success .toast__dot {
+      background: #22c55e;
+    }
+
+    .toast--error .toast__dot {
+      background: #ef4444;
+    }
+
+    .toast--warning .toast__dot {
+      background: #f59e0b;
+    }
+
+    .toast--info .toast__dot {
+      background: #3b82f6;
+    }
+
+    .toast__content {
+      flex: 1;
+    }
+
+    .toast__title {
+      font-weight: 700;
+      margin-bottom: 2px;
+      font-size: 14px;
+    }
+
+    .toast__msg {
+      font-size: 13px;
+      line-height: 1.35;
+    }
+
+    .toast__close {
+      cursor: pointer;
+      border: none;
+      background: transparent;
+      font-size: 18px;
+      line-height: 1;
+      color: #555;
+      padding: 0 4px;
+      align-self: start;
+    }
+
+    .toast__close:hover {
+      color: #000;
+    }
+
     </style>
 </head>
 
@@ -313,7 +425,7 @@
             </div>
 
             <div class="form-group">
-                <input type="text" placeholder="Email" name="gmail" pattern="[a-zA-Z0-9._%+-]+@gmail\.com" required>
+                <input type="text" placeholder="Email(optional)" name="gmail" pattern="[a-zA-Z0-9._%+-]+@gmail\.com">
             </div>
 
             <div class="form-group">
@@ -334,7 +446,7 @@
             </div>
 
             <div class="form-group gender">
-                <select id="gender" name="location" required>
+                <select id="city" name="location" required>
                     <option value="" disabled selected>Select your City</option>
                     <option value="hyderabad">Hyderabad</option>
                     <option value="warangal">Warangal</option>
@@ -350,15 +462,103 @@
         <center>
             <p class="logina">Already have an account? <a href="{{ url_for('login') }}">Login</a></p>
         </center>
-
-        {% if error %}
-        <div class="error">{{ error }}</div>
-        {% endif %}
     </div>
     <!-- Loading Overlay -->
     <div id="loading-overlay">
         <div class="spinner"></div>
     </div>
+<center>
+  <div id="toastStack" class="toast-stack">
+    {% with messages = get_flashed_messages(with_categories=True) %}
+    {% if messages %}
+    {% for category, message in messages %}
+    {% set cls = 'toast--info' %}
+    {% if category in ['success','error','warning','info'] %}
+    {% set cls = 'toast--' ~ category %}
+    {% endif %}
+    <div class="toast {{ cls }}">
+      <div class="toast__content">
+        <div class="toast__title">
+          {{ category|capitalize if category else 'Notice' }}
+        </div>
+        <div class="toast__msg">{{ message }}</div>
+      </div>
+      <button class="toast__close" aria-label="Close" onclick="this.parentElement.remove()">×</button>
+    </div>
+    {% endfor %}
+    {% endif %}
+    {% endwith %}
+  </div>
+  </center>
+<script>
+  document.querySelector("form").addEventListener("submit", function (e) {
+    let missing = [];
+
+    // Text inputs
+    const username = document.querySelector("input[name='username']").value.trim();
+    const password = document.querySelector("input[name='password']").value.trim();
+    const phone = document.querySelector("input[name='phone']").value.trim();
+
+    // File inputs
+    const profilePic = document.getElementById("imageInput").files.length;
+
+    // Selects
+    const gender = document.getElementById("gender").value;
+    const location = document.getElementById("city").value;
+
+    // Check each field
+    if (!username) missing.push("Owner Name");
+    if (!password) missing.push("Password");
+    if (!gender) missing.push("Gender");
+    if (!location) missing.push("City");
+    if (!phone) missing.push("Phone Number");
+    if (!profilePic) missing.push("Profile Picture");
+    
+    if (missing.length > 0) {
+      e.preventDefault(); // stop form submission
+      showToast("Please fill in: " + missing.join(", "), "error", "Missing Details", 5000);
+    }
+  });
+
+  function showToast(message, type = 'info', title = null, autoHideMs = 5000) {
+    const stack = document.getElementById('toastStack');
+    const wrapper = document.createElement('div');
+    wrapper.className = `toast toast--${type}`;
+
+    const dot = document.createElement('span');
+    dot.className = 'toast__dot';
+
+    const content = document.createElement('div');
+    content.className = 'toast__content';
+
+    const heading = document.createElement('div');
+    heading.className = 'toast__title';
+    heading.textContent = title || type.charAt(0).toUpperCase() + type.slice(1);
+
+    const msg = document.createElement('div');
+    msg.className = 'toast__msg';
+    msg.textContent = message;
+
+    const close = document.createElement('button');
+    close.className = 'toast__close';
+    close.setAttribute('aria-label', 'Close');
+    close.textContent = '×';
+    close.addEventListener('click', () => wrapper.remove());
+
+    content.appendChild(heading);
+    content.appendChild(msg);
+    wrapper.appendChild(dot);
+    wrapper.appendChild(content);
+    wrapper.appendChild(close);
+
+    stack.appendChild(wrapper);
+
+    // Auto remove
+    if (autoHideMs) {
+      setTimeout(() => wrapper.remove(), autoHideMs);
+    }
+  }
+</script>
 
     <script>
         document.getElementById("imageInput").addEventListener("change", function () {
