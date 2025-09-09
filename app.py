@@ -292,18 +292,20 @@ def accept_kyc(username):
         if user:
             cursor.execute("""
                 INSERT INTO users 
-                (username, password, account_type, phone, gmail, business_type,housenumber,street,landmark, location, bio, price, profile_pic, helperid, aadhaar_file, pan_file) 
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                (username, password, gender, account_type, phone, gmail, business_type, service_type,
+                housenumber, street, landmark, location, bio, price, profile_pic, helperid,
+                aadhaar_file, pan_file) 
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """, (
-                user['username'], user['password'], 'business',
+                user['username'], user['password'], user['gender'], 'business',
                 user['phone'], user['gmail'],
-                user['business_type'], user['location'],
-                user['housenumber'], user['street'], user['landmark'],
+                user['business_type'], user['service_type'],
+                user['housenumber'], user['street'], user['landmark'], user['location'],
                 user['bio'], user['price'],
                 user['profile_pic'], user['helperid'],
                 user['aadhaar_file'], user['pan_file']
             ))
-            
+
             # Clean up from KYC
             cursor.execute("DELETE FROM kyc WHERE username = %s", (username,))
             conn.commit()
