@@ -1,0 +1,1019 @@
+{% extends 'base.html' %}
+{% block title %}Profile - Mr. Helper{% endblock %}
+{% block content %}
+
+<!-- Profile Hero Section -->
+<div class="profile-hero">
+  <div class="profile-hero-content">
+    <div class="profile-avatar-section">
+      <div class="profile-avatar">
+        {% if profile_user.profile_pic %}
+          <img src="{{ profile_user.profile_pic }}" alt="Profile Picture" class="avatar-image">
+        {% else %}
+          <img src="{{ url_for('static', filename='assets/default_profile.jpg') }}" alt="Default Profile Picture" class="avatar-image">
+        {% endif %}
+        {% if profile_user.account_type == 'business' and profile_user.avg_rating %}
+          <div class="rating-badge">
+            <span class="rating-stars">⭐</span>
+            <span class="rating-value">{{ "%.1f"|format(profile_user.avg_rating) }}</span>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+    
+    <div class="profile-header-info">
+      <h1 class="profile-name">{{ profile_user.username }}</h1>
+      {% if profile_user.account_type == 'business' %}
+        <div class="profile-badges">
+          <span class="badge business-badge">🏢 {{ profile_user.business_type }}</span>
+          <span class="badge location-badge">📍 {{ profile_user.location or 'Location not set' }}</span>
+        </div>
+      {% endif %}
+      
+      <div class="profile-stats">
+        {% if profile_user.account_type == 'business' %}
+          <div class="stat-item">
+            <span class="stat-number">{{ feedback|length }}</span>
+            <span class="stat-label">Reviews</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-number">{{ "%.1f"|format(profile_user.avg_rating or 0) }}</span>
+            <span class="stat-label">Rating</span>
+          </div>
+        {% endif %}
+        <div class="stat-item">
+          <span class="stat-number">{{ profile_user.helperid }}</span>
+          <span class="stat-label">Helper ID</span>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  {% if session['username'] == profile_user.username %}
+    <div class="profile-actions">
+      <a href="{{ url_for('edit_profile') }}" class="action-btn primary">
+        <i class="fas fa-edit"></i>
+        <span>Edit Profile</span>
+      </a>
+      <button class="action-btn danger" onclick="showLogoutConfirmation()">
+        <i class="fas fa-sign-out-alt"></i>
+        <span>Logout</span>
+      </button>
+    </div>
+  {% endif %}
+</div>
+
+<!-- Profile Details Section -->
+<div class="profile-container">
+  <div class="profile-sections">
+    
+    <!-- Contact Information -->
+    <div class="profile-section">
+      <div class="section-header">
+        <h3><i class="fas fa-address-card"></i> Contact Information</h3>
+      </div>
+      <div class="contact-grid">
+        <div class="contact-item">
+          <div class="contact-icon">📞</div>
+          <div class="contact-info">
+            <span class="contact-label">Phone</span>
+            <span class="contact-value">{{ profile_user.phone or 'Not provided' }}</span>
+          </div>
+        </div>
+        <div class="contact-item">
+          <div class="contact-icon">📧</div>
+          <div class="contact-info">
+            <span class="contact-label">Email</span>
+            <span class="contact-value">{{ profile_user.gmail or 'Not provided' }}</span>
+          </div>
+        </div>
+        {% if profile_user.account_type == 'business' %}
+          <div class="contact-item">
+            <div class="contact-icon">🏠</div>
+            <div class="contact-info">
+              <span class="contact-label">Address</span>
+              <span class="contact-value">{{ profile_user.housenumber or '' }} {{ profile_user.street or '' }}</span>
+            </div>
+          </div>
+          <div class="contact-item">
+            <div class="contact-icon">💵</div>
+            <div class="contact-info">
+              <span class="contact-label">Price Range</span>
+              <span class="contact-value">{{ profile_user.price or 'Contact for pricing' }}</span>
+            </div>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+
+    {% if profile_user.account_type == 'business' and profile_user.bio %}
+      <!-- Bio Section -->
+      <div class="profile-section">
+        <div class="section-header">
+          <h3><i class="fas fa-user-circle"></i> About</h3>
+        </div>
+        <div class="bio-content">
+          <p>{{ profile_user.bio }}</p>
+        </div>
+      </div>
+    {% endif %}
+
+    <!-- Rating & Reviews Section -->
+    <div class="profile-section">
+      <div class="section-header">
+        <h3><i class="fas fa-star"></i> Ratings & Reviews</h3>
+        {% if average_rating %}
+          <div class="rating-summary">
+            <span class="rating-display">{{ average_rating }}/5</span>
+            <span class="review-count">({{ feedback|length }} reviews)</span>
+          </div>
+        {% endif %}
+      </div>
+      
+      {% if average_rating %}
+        <div class="rating-breakdown">
+          <div class="rating-visual">
+            <div class="stars-display">
+              {% for i in range(5) %}
+                {% if i < (average_rating|int) %}
+                  <span class="star filled">★</span>
+                {% else %}
+                  <span class="star empty">★</span>
+                {% endif %}
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+      {% else %}
+        <div class="no-ratings">
+          <p>No ratings yet</p>
+        </div>
+      {% endif %}
+
+      {% if session['username'] != profile_user.username %}
+        <div class="rating-form-section">
+          {% if not has_rated %}
+            <h4>Rate & Review</h4>
+            <form method="POST" action="{{ url_for('rate_comment', username=profile_user.username) }}" class="rating-form">
+              <div class="star-rating-container">
+                <div class="star-rating">
+                  {% for i in range(5, 0, -1) %}
+                    <input type="radio" id="star{{ i }}" name="rating" value="{{ i }}" required />
+                    <label for="star{{ i }}" class="star-label">★</label>
+                  {% endfor %}
+                </div>
+                <span class="rating-text">Click to rate</span>
+              </div>
+              <div class="form-group">
+                <textarea name="comment" placeholder="Share your experience..." required class="review-textarea"></textarea>
+              </div>
+              <button type="submit" class="submit-rating-btn">
+                <i class="fas fa-paper-plane"></i>
+                <span>Submit Review</span>
+              </button>
+            </form>
+          {% else %}
+            <div class="already-rated">
+              <p><i class="fas fa-check-circle"></i> You have already rated this user.</p>
+              <form method="POST" action="{{ url_for('delete_rating', username=profile_user.username) }}" class="delete-rating-form">
+                <button type="submit" class="delete-rating-btn">
+                  <i class="fas fa-trash"></i>
+                  <span>Delete Rating</span>
+                </button>
+              </form>
+            </div>
+          {% endif %}
+        </div>
+      {% endif %}
+    </div>
+
+    <!-- Feedback Section -->
+    {% if feedback %}
+      <div class="profile-section">
+        <div class="section-header">
+          <h3><i class="fas fa-comments"></i> Customer Reviews</h3>
+        </div>
+        <div class="feedback-list">
+          {% for fb in feedback %}
+            <div class="feedback-card">
+              <div class="feedback-header">
+                <div class="reviewer-info">
+                  <div class="reviewer-avatar">
+                    <span>{{ fb['from_user'][0].upper() }}</span>
+                  </div>
+                  <div class="reviewer-details">
+                    <h4>{{ fb['from_user'] }}</h4>
+                    <div class="review-rating">
+                      {% for i in range(5) %}
+                        {% if i < fb['rating'] %}
+                          <span class="star filled">★</span>
+                        {% else %}
+                          <span class="star empty">★</span>
+                        {% endif %}
+                      {% endfor %}
+                      <span class="rating-number">{{ fb['rating'] }}/5</span>
+                    </div>
+                  </div>
+                </div>
+                <div class="review-date">
+                  <span class="timestamp">{{ fb.get('created_at', '') }}</span>
+                </div>
+              </div>
+              <div class="feedback-content">
+                <p>{{ fb['comment'] }}</p>
+                {% if fb['reply'] %}
+                  <div class="reply-section">
+                    <div class="reply-header">
+                      <span class="reply-label">Reply from {{ profile_user.username }}</span>
+                    </div>
+                    <p class="reply-text">{{ fb['reply'] }}</p>
+                  </div>
+                {% endif %}
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+    {% endif %}
+
+    <!-- Report Section -->
+    {% if session['username'] != profile_user.username and not is_admin %}
+      <div class="profile-section">
+        <div class="section-header">
+          <h3><i class="fas fa-flag"></i> Report Profile</h3>
+        </div>
+        <form method="POST" action="{{ url_for('report', username=profile_user.username) }}" class="report-form">
+          <div class="form-group">
+            <textarea name="reason" placeholder="Please provide a reason for reporting this profile..." required class="report-textarea"></textarea>
+          </div>
+          <button type="submit" class="report-btn">
+            <i class="fas fa-flag"></i>
+            <span>Submit Report</span>
+          </button>
+        </form>
+      </div>
+    {% endif %}
+
+    <!-- Reports Status -->
+    {% if reports %}
+      <div class="profile-section warning-section">
+        <div class="section-header warning">
+          <h3><i class="fas fa-exclamation-triangle"></i> Profile Reports</h3>
+        </div>
+        <div class="reports-list">
+          {% for report in reports %}
+            <div class="report-item">
+              <p>{{ report.reason }}</p>
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Logout Confirmation Modal -->
+<div id="logoutModal" class="modal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h3><i class="fas fa-sign-out-alt"></i> Confirm Logout</h3>
+    </div>
+    <div class="modal-body">
+      <p>Are you sure you want to logout?</p>
+      <p class="modal-subtext">You'll need to login again to access your account.</p>
+    </div>
+    <div class="modal-footer">
+      <button class="modal-btn cancel-btn" onclick="hideLogoutConfirmation()">
+        <i class="fas fa-times"></i>
+        <span>No, Stay</span>
+      </button>
+      <a href="{{ url_for('logout') }}" class="modal-btn confirm-btn">
+        <i class="fas fa-check"></i>
+        <span>Yes, Logout</span>
+      </a>
+    </div>
+  </div>
+</div>
+
+<!-- Modern Profile Page Styling -->
+<style>
+/* Profile Hero Section */
+.profile-hero {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 40px 20px;
+  margin-bottom: 30px;
+}
+
+.profile-hero-content {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 30px;
+  flex-wrap: wrap;
+}
+
+.profile-avatar-section {
+  position: relative;
+}
+
+.profile-avatar {
+  position: relative;
+  display: inline-block;
+}
+
+.avatar-image {
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 4px solid rgba(255, 255, 255, 0.3);
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.2);
+}
+
+.rating-badge {
+  position: absolute;
+  bottom: -5px;
+  right: -5px;
+  background: #ffd700;
+  color: #333;
+  padding: 6px 10px;
+  border-radius: 20px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+}
+
+.profile-header-info {
+  flex: 1;
+  min-width: 300px;
+}
+
+.profile-name {
+  font-size: 2.5rem;
+  font-weight: 700;
+  margin: 0 0 15px 0;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.profile-badges {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+.badge {
+  background: rgba(255, 255, 255, 0.2);
+  padding: 8px 16px;
+  border-radius: 20px;
+  font-size: 0.9rem;
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.profile-stats {
+  display: flex;
+  gap: 30px;
+  flex-wrap: wrap;
+}
+
+.stat-item {
+  text-align: center;
+}
+
+.stat-number {
+  display: block;
+  font-size: 1.8rem;
+  font-weight: 700;
+  color: #ffd700;
+}
+
+.stat-label {
+  font-size: 0.9rem;
+  opacity: 0.9;
+}
+
+.profile-actions {
+  display: flex;
+  gap: 15px;
+  flex-wrap: wrap;
+  margin-top: 20px;
+}
+
+.action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 24px;
+  border-radius: 25px;
+  text-decoration: none;
+  font-weight: 600;
+  transition: all 0.3s ease;
+  border: none;
+  cursor: pointer;
+  font-size: 1rem;
+}
+
+.action-btn.primary {
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.action-btn.primary:hover {
+  background: rgba(255, 255, 255, 0.3);
+  transform: translateY(-2px);
+}
+
+.action-btn.danger {
+  background: rgba(239, 68, 68, 0.8);
+  color: white;
+  backdrop-filter: blur(10px);
+}
+
+.action-btn.danger:hover {
+  background: rgba(239, 68, 68, 1);
+  transform: translateY(-2px);
+}
+
+/* Profile Container */
+.profile-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 20px;
+}
+
+.profile-sections {
+  display: grid;
+  gap: 30px;
+}
+
+.profile-section {
+  background: white;
+  border-radius: 15px;
+  padding: 25px;
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+  border: 1px solid #f0f0f0;
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+  padding-bottom: 15px;
+  border-bottom: 2px solid #f8f9fa;
+}
+
+.section-header h3 {
+  margin: 0;
+  color: #333;
+  font-size: 1.3rem;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.section-header.warning h3 {
+  color: #dc3545;
+}
+
+.section-header i {
+  color: #667eea;
+}
+
+/* Contact Grid */
+.contact-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 20px;
+}
+
+.contact-item {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  padding: 15px;
+  background: #f8f9fa;
+  border-radius: 10px;
+  transition: transform 0.2s ease;
+}
+
+.contact-item:hover {
+  transform: translateY(-2px);
+}
+
+.contact-icon {
+  font-size: 1.5rem;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #667eea;
+  color: white;
+  border-radius: 50%;
+}
+
+.contact-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.contact-label {
+  font-size: 0.8rem;
+  color: #666;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.contact-value {
+  font-size: 1rem;
+  color: #333;
+  font-weight: 500;
+}
+
+/* Bio Section */
+.bio-content {
+  background: #f8f9fa;
+  padding: 20px;
+  border-radius: 10px;
+  border-left: 4px solid #667eea;
+}
+
+.bio-content p {
+  margin: 0;
+  line-height: 1.6;
+  color: #555;
+}
+
+/* Rating Section */
+.rating-summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.rating-display {
+  font-size: 2rem;
+  font-weight: 700;
+  color: #ffd700;
+}
+
+.review-count {
+  color: #666;
+  font-size: 1rem;
+}
+
+.rating-breakdown {
+  margin: 20px 0;
+}
+
+.stars-display {
+  display: flex;
+  gap: 5px;
+}
+
+.star {
+  font-size: 1.5rem;
+  color: #ddd;
+}
+
+.star.filled {
+  color: #ffd700;
+}
+
+/* Rating Form */
+.rating-form-section {
+  margin-top: 25px;
+  padding-top: 25px;
+  border-top: 1px solid #eee;
+}
+
+.rating-form-section h4 {
+  margin: 0 0 20px 0;
+  color: #333;
+}
+
+.star-rating-container {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  margin-bottom: 20px;
+}
+
+.star-rating {
+  direction: rtl;
+  display: inline-flex;
+  gap: 5px;
+}
+
+.star-rating input[type="radio"] {
+  display: none;
+}
+
+.star-label {
+  font-size: 2rem;
+  color: #ddd;
+  cursor: pointer;
+  transition: color 0.2s ease;
+}
+
+.star-rating input[type="radio"]:checked ~ .star-label,
+.star-label:hover,
+.star-label:hover ~ .star-label {
+  color: #ffd700;
+}
+
+.rating-text {
+  color: #666;
+  font-size: 0.9rem;
+}
+
+.form-group {
+  margin-bottom: 20px;
+}
+
+.review-textarea,
+.report-textarea {
+  width: 100%;
+  padding: 15px;
+  border: 2px solid #e5e7eb;
+  border-radius: 10px;
+  font-size: 1rem;
+  resize: vertical;
+  min-height: 100px;
+  transition: border-color 0.3s ease;
+}
+
+.review-textarea:focus,
+.report-textarea:focus {
+  outline: none;
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.submit-rating-btn,
+.report-btn {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  padding: 12px 24px;
+  border-radius: 25px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transition: transform 0.2s ease;
+}
+
+.submit-rating-btn:hover,
+.report-btn:hover {
+  transform: translateY(-2px);
+}
+
+/* Feedback Cards */
+.feedback-list {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.feedback-card {
+  background: #f8f9fa;
+  border-radius: 12px;
+  padding: 20px;
+  border-left: 4px solid #667eea;
+}
+
+.feedback-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 15px;
+}
+
+.reviewer-info {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.reviewer-avatar {
+  width: 40px;
+  height: 40px;
+  background: #667eea;
+  color: white;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+}
+
+.reviewer-details h4 {
+  margin: 0 0 5px 0;
+  color: #333;
+}
+
+.review-rating {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.rating-number {
+  color: #666;
+  font-size: 0.9rem;
+}
+
+.review-date {
+  color: #999;
+  font-size: 0.9rem;
+}
+
+.feedback-content p {
+  margin: 0 0 15px 0;
+  line-height: 1.6;
+  color: #555;
+}
+
+.reply-section {
+  background: white;
+  padding: 15px;
+  border-radius: 8px;
+  border-left: 3px solid #10b981;
+}
+
+.reply-label {
+  font-size: 0.9rem;
+  color: #10b981;
+  font-weight: 600;
+  display: block;
+  margin-bottom: 8px;
+}
+
+.reply-text {
+  margin: 0;
+  color: #555;
+  font-style: italic;
+}
+
+/* Already Rated */
+.already-rated {
+  text-align: center;
+  padding: 20px;
+  background: #f0f9ff;
+  border-radius: 10px;
+  border: 1px solid #0ea5e9;
+}
+
+.already-rated p {
+  margin: 0 0 15px 0;
+  color: #0369a1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.delete-rating-btn {
+  background: #f59e0b;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 20px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.9rem;
+}
+
+/* Report Section */
+.report-form {
+  margin-top: 20px;
+}
+
+/* Reports */
+.reports-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.report-item {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  padding: 15px;
+  border-radius: 8px;
+  border-left: 4px solid #ef4444;
+}
+
+.report-item p {
+  margin: 0;
+  color: #dc2626;
+}
+
+/* Modal Styles */
+.modal {
+  display: none;
+  position: fixed;
+  z-index: 10000;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(5px);
+}
+
+.modal-content {
+  background-color: white;
+  margin: 15% auto;
+  padding: 0;
+  border-radius: 15px;
+  width: 90%;
+  max-width: 400px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+  animation: modalSlideIn 0.3s ease;
+}
+
+@keyframes modalSlideIn {
+  from {
+    transform: translateY(-50px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.modal-header {
+  padding: 20px 25px 15px;
+  border-bottom: 1px solid #eee;
+}
+
+.modal-header h3 {
+  margin: 0;
+  color: #333;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.modal-body {
+  padding: 20px 25px;
+}
+
+.modal-body p {
+  margin: 0 0 10px 0;
+  color: #555;
+  font-size: 1rem;
+}
+
+.modal-subtext {
+  color: #666;
+  font-size: 0.9rem;
+}
+
+.modal-footer {
+  padding: 15px 25px 20px;
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+}
+
+.modal-btn {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  text-decoration: none;
+  transition: all 0.2s ease;
+}
+
+.cancel-btn {
+  background: #f3f4f6;
+  color: #374151;
+}
+
+.cancel-btn:hover {
+  background: #e5e7eb;
+}
+
+.confirm-btn {
+  background: #ef4444;
+  color: white;
+}
+
+.confirm-btn:hover {
+  background: #dc2626;
+}
+
+/* Mobile Responsive */
+@media (max-width: 768px) {
+  .profile-hero-content {
+    flex-direction: column;
+    text-align: center;
+    gap: 20px;
+  }
+
+  .profile-name {
+    font-size: 2rem;
+  }
+
+  .profile-stats {
+    justify-content: center;
+    gap: 20px;
+  }
+
+  .contact-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .feedback-header {
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .modal-content {
+    margin: 20% auto;
+    width: 95%;
+  }
+
+  .modal-footer {
+    flex-direction: column;
+  }
+
+  .action-btn {
+    padding: 10px 20px;
+    font-size: 0.9rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .profile-hero {
+    padding: 30px 15px;
+  }
+
+  .profile-container {
+    padding: 0 15px;
+  }
+
+  .profile-section {
+    padding: 20px;
+  }
+
+  .avatar-image {
+    width: 100px;
+    height: 100px;
+  }
+
+  .profile-name {
+    font-size: 1.8rem;
+  }
+
+  .star-label {
+    font-size: 1.5rem;
+  }
+}
+</style>
+
+<script>
+function showLogoutConfirmation() {
+  document.getElementById('logoutModal').style.display = 'block';
+  document.body.style.overflow = 'hidden';
+}
+
+function hideLogoutConfirmation() {
+  document.getElementById('logoutModal').style.display = 'none';
+  document.body.style.overflow = 'auto';
+}
+
+// Close modal when clicking outside
+window.onclick = function(event) {
+  const modal = document.getElementById('logoutModal');
+  if (event.target === modal) {
+    hideLogoutConfirmation();
+  }
+}
+
+// Close modal with Escape key
+document.addEventListener('keydown', function(event) {
+  if (event.key === 'Escape') {
+    hideLogoutConfirmation();
+  }
+});
+</script>
+{% endblock %}
