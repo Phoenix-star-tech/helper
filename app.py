@@ -172,6 +172,43 @@ def init_db():
                 price TEXT
             )
         ''')
+        
+        # Create subscription_plans table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS subscription_plans (
+                id SERIAL PRIMARY KEY,
+                category TEXT UNIQUE NOT NULL,
+                amount NUMERIC NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        # Create subscriptions table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS subscriptions (
+                id SERIAL PRIMARY KEY,
+                helper_username TEXT NOT NULL,
+                category TEXT NOT NULL,
+                start_date DATE NOT NULL,
+                end_date DATE NOT NULL,
+                status TEXT NOT NULL DEFAULT 'active',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        # Create order_requests table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS order_requests (
+                id SERIAL PRIMARY KEY,
+                order_id INTEGER NOT NULL,
+                helper_username TEXT NOT NULL,
+                amount NUMERIC NOT NULL,
+                status TEXT NOT NULL DEFAULT 'pending',
+                timestamp TIMESTAMP DEFAULT NOW(),
+                UNIQUE(order_id, helper_username)
+            )
+        ''')
+        
         conn.commit()
 
 # Routes
@@ -504,6 +541,120 @@ def delete_ad(ad_id):
     flash("Ad deleted.", "success")
     return redirect(url_for('admin_dashboard'))
 
+# Route: Subscription Plans Management (Admin only)
+@app.route('/admin/subscription-plans')
+def admin_subscription_plans():
+    """Manage subscription plans"""
+    if 'username' not in session or session['username'] != 'adime':
+        flash('Access denied: Admins only.', 'danger')
+        return redirect(url_for('login'))
+    
+    with get_db_connection() as conn:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        
+        # Get all plans
+        cur.execute("SELECT * FROM subscription_plans ORDER BY category")
+        plans = cur.fetchall()
+        
+        # Get all unique categories from users
+        cur.execute("SELECT DISTINCT business_type FROM users WHERE account_type='business' ORDER BY business_type")
+        categories = cur.fetchall()
+        
+    return render_template('admin_subscription_plans.html', plans=plans, categories=categories)
+
+@app.route('/admin/subscription-plans/create', methods=['POST'])
+def create_subscription_plan():
+    """Create a new subscription plan"""
+    if 'username' not in session or session['username'] != 'adime':
+        flash('Access denied: Admins only.', 'danger')
+        return redirect(url_for('login'))
+    
+    category = request.form.get('category')
+    amount = request.form.get('amount')
+    
+    if not category or not amount:
+        flash("Category and amount are required.", "error")
+        return redirect(url_for('admin_subscription_plans'))
+    
+    try:
+        amount = float(amount)
+    except ValueError:
+        flash("Invalid amount.", "error")
+        return redirect(url_for('admin_subscription_plans'))
+    
+    with get_db_connection() as conn:
+        cur = conn.cursor()
+        
+        # Insert or update plan
+        cur.execute("""
+            INSERT INTO subscription_plans (category, amount)
+            VALUES (%s, %s)
+            ON CONFLICT (category) 
+            DO UPDATE SET amount = EXCLUDED.amount
+        """, (category, amount))
+        conn.commit()
+    
+    flash(f"Subscription plan for {category} updated successfully!", "success")
+    return redirect(url_for('admin_subscription_plans'))
+
+@app.route('/admin/subscription-plans/delete/<int:plan_id>', methods=['POST'])
+def delete_subscription_plan(plan_id):
+    """Delete a subscription plan"""
+    if 'username' not in session or session['username'] != 'adime':
+        flash('Access denied: Admins only.', 'danger')
+        return redirect(url_for('login'))
+    
+    with get_db_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM subscription_plans WHERE id = %s", (plan_id,))
+        conn.commit()
+    
+    flash("Subscription plan deleted successfully!", "success")
+    return redirect(url_for('admin_subscription_plans'))
+
+@app.route('/admin/order-requests')
+def admin_order_requests():
+    """Admin monitoring of order requests"""
+    if 'username' not in session or session['username'] != 'adime':
+        flash('Access denied: Admins only.', 'danger')
+        return redirect(url_for('login'))
+    
+    with get_db_connection() as conn:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        
+        # Get all order requests with details
+        cur.execute("""
+            SELECT 
+                or_req.*,
+                o.message as order_message,
+                s.service_name,
+                l.location_name,
+                (SELECT username FROM users WHERE id = o.owner_id) as customer_username
+            FROM order_requests or_req
+            JOIN orders o ON o.id = or_req.order_id
+            JOIN services s ON s.id = o.service_id
+            JOIN locations l ON l.id = o.location_id
+            ORDER BY or_req.timestamp DESC
+        """)
+        requests = cur.fetchall()
+    
+    return render_template('admin_order_requests.html', requests=requests)
+
+@app.route('/admin/order-requests/delete/<int:request_id>', methods=['POST'])
+def delete_order_request(request_id):
+    """Delete an order request"""
+    if 'username' not in session or session['username'] != 'adime':
+        flash('Access denied: Admins only.', 'danger')
+        return redirect(url_for('login'))
+    
+    with get_db_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM order_requests WHERE id = %s", (request_id,))
+        conn.commit()
+    
+    flash("Order request deleted successfully!", "success")
+    return redirect(url_for('admin_order_requests'))
+
 @app.route('/signup')
 def signup():
     return render_template('signup.html')
@@ -666,6 +817,17 @@ def profile(username=None):
         is_owner = session['username'] == username
         is_admin = session['username'] == 'adime'
 
+        # If admin viewing a business profile, fetch subscriptions for management UI
+        subscriptions = []
+        if is_admin and profile_user.get('account_type') == 'business':
+            cursor.execute("""
+                SELECT id, helper_username, category, status, start_date, end_date
+                FROM subscriptions
+                WHERE helper_username = %s
+                ORDER BY status DESC, end_date DESC NULLS LAST
+            """, (profile_user['username'],))
+            subscriptions = cursor.fetchall()
+
     return render_template(
         'profile.html',
         logged_in_user=logged_in_user,   # ✅ always the session user
@@ -676,7 +838,8 @@ def profile(username=None):
         has_rated=has_rated,
         reports=reports,
         is_owner=is_owner,
-        is_admin=is_admin
+        is_admin=is_admin,
+        subscriptions=subscriptions
     )
 
 @app.route('/edit_profile', methods=['GET', 'POST'])
@@ -722,6 +885,188 @@ def edit_profile():
 
     return render_template('edit_profile.html', user=user)
 
+# ---------------------------
+# Admin: Orders Overview
+# ---------------------------
+@app.route('/admin/orders')
+def admin_orders():
+    if 'username' not in session or session['username'] != 'adime':
+        flash('Admin access required', 'error')
+        return redirect(url_for('home'))
+
+    with get_db_connection() as conn:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("""
+            SELECT 
+                o.id AS order_id,
+                o.created_at AS order_created_at,
+                (SELECT username FROM users WHERE id = o.owner_id) AS owner_username,
+                s.service_name,
+                l.location_name,
+                -- accepted helper from order_requests if present
+                (
+                  SELECT r.helper_username 
+                  FROM order_requests r 
+                  WHERE r.order_id = o.id AND r.status = 'accepted' 
+                  ORDER BY r.timestamp DESC LIMIT 1
+                ) AS accepted_helper,
+                (
+                  SELECT r.timestamp 
+                  FROM order_requests r 
+                  WHERE r.order_id = o.id AND r.status = 'accepted' 
+                  ORDER BY r.timestamp DESC LIMIT 1
+                ) AS accepted_at,
+                -- fallback from order_acceptance
+                (
+                  SELECT u.username 
+                  FROM order_acceptance oa 
+                  JOIN users u ON u.id = oa.provider_id 
+                  WHERE oa.order_id = o.id AND oa.final_selected = TRUE 
+                  ORDER BY oa.id DESC LIMIT 1
+                ) AS accepted_helper_fallback
+            FROM orders o
+            JOIN services s ON s.id = o.service_id
+            JOIN locations l ON l.id = o.location_id
+            ORDER BY o.created_at DESC
+        """)
+        rows = cur.fetchall()
+
+    # Normalize accepted helper
+    for r in rows:
+        if not r.get('accepted_helper'):
+            r['accepted_helper'] = r.get('accepted_helper_fallback')
+
+    return render_template('admin_orders.html', orders=rows)
+
+# ---------------------------
+# Admin: Subscriptions Management
+# ---------------------------
+@app.route('/admin/subscriptions')
+def admin_subscriptions():
+    if 'username' not in session or session['username'] != 'adime':
+        flash('Admin access required', 'error')
+        return redirect(url_for('home'))
+
+    with get_db_connection() as conn:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("""
+            SELECT id, helper_username, category, status, start_date, end_date
+            FROM subscriptions
+            ORDER BY status DESC, end_date DESC NULLS LAST
+        """)
+        subs = cur.fetchall()
+
+    return render_template('admin_subscriptions.html', subscriptions=subs)
+
+@app.route('/admin/subscriptions/cancel', methods=['POST'])
+def admin_cancel_subscription():
+    if 'username' not in session or session['username'] != 'adime':
+        return jsonify({'ok': False, 'error': 'Admin access required'}), 403
+
+    helper_username = request.form.get('helper_username') or (request.json or {}).get('helper_username')
+    category = request.form.get('category') or (request.json or {}).get('category')
+    if not helper_username or not category:
+        return jsonify({'ok': False, 'error': 'helper_username and category are required'}), 400
+
+    with get_db_connection() as conn:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+        # Cancel subscription
+        cur.execute("""
+            UPDATE subscriptions
+            SET status = 'cancelled', end_date = CURRENT_DATE
+            WHERE helper_username = %s AND category = %s AND status = 'active'
+            RETURNING helper_username
+        """, (helper_username, category))
+        updated = cur.fetchone()
+
+        if not updated:
+            conn.commit()
+            return jsonify({'ok': False, 'error': 'No active subscription found'}), 404
+
+        # Notify helper
+        cur.execute("SELECT id, fcm_token FROM users WHERE username = %s", (helper_username,))
+        user = cur.fetchone()
+        if user:
+            # Resolve admin user id for notifications, fallback to helper id to satisfy NOT NULL
+            cur.execute("SELECT id FROM users WHERE username = %s", (session['username'],))
+            admin_row = cur.fetchone()
+            admin_id = admin_row['id'] if admin_row else user['id']
+            cur.execute("""
+                INSERT INTO notifications (to_user_id, from_user_id, order_id, message, created_at, is_read)
+                VALUES (%s, %s, %s, %s, NOW(), FALSE)
+            """, (user['id'], admin_id, None, f"Your subscription for {category} has been cancelled by admin."))
+
+            if user.get('fcm_token'):
+                try:
+                    send_push_notification(user['fcm_token'], 'Subscription Cancelled', f'Your {category} subscription was cancelled.')
+                except Exception:
+                    pass
+
+        conn.commit()
+
+    if request.is_json:
+        return jsonify({'ok': True})
+    flash('Subscription cancelled and helper notified.', 'success')
+    return redirect(url_for('admin_subscriptions'))
+
+@app.route('/admin/subscriptions/cancel_all', methods=['POST'])
+def admin_cancel_all_subscriptions():
+    if 'username' not in session or session['username'] != 'adime':
+        return jsonify({'ok': False, 'error': 'Admin access required'}), 403
+
+    helper_username = request.form.get('helper_username') or (request.json or {}).get('helper_username')
+    if not helper_username:
+        return jsonify({'ok': False, 'error': 'helper_username is required'}), 400
+
+    with get_db_connection() as conn:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+        # Find active subscriptions
+        cur.execute("""
+            SELECT category FROM subscriptions
+            WHERE helper_username = %s AND status = 'active'
+        """, (helper_username,))
+        active = cur.fetchall()
+
+        if not active:
+            conn.commit()
+            return jsonify({'ok': False, 'error': 'No active subscriptions found'}), 404
+
+        # Cancel all active
+        cur.execute("""
+            UPDATE subscriptions
+            SET status = 'cancelled', end_date = CURRENT_DATE
+            WHERE helper_username = %s AND status = 'active'
+        """, (helper_username,))
+
+        # Notify helper once per category
+        cur.execute("SELECT id, fcm_token FROM users WHERE username = %s", (helper_username,))
+        user = cur.fetchone()
+        if user:
+            # Resolve admin user id for notifications, fallback to helper id
+            cur.execute("SELECT id FROM users WHERE username = %s", (session['username'],))
+            admin_row = cur.fetchone()
+            admin_id = admin_row['id'] if admin_row else user['id']
+            for row in active:
+                category = row.get('category')
+                cur.execute("""
+                    INSERT INTO notifications (to_user_id, from_user_id, order_id, message, created_at, is_read)
+                    VALUES (%s, %s, %s, %s, NOW(), FALSE)
+                """, (user['id'], admin_id, None, f"Your subscription for {category} has been cancelled by admin."))
+            if user.get('fcm_token'):
+                try:
+                    send_push_notification(user['fcm_token'], 'Subscriptions Cancelled', 'Your active subscriptions were cancelled by admin.')
+                except Exception:
+                    pass
+
+        conn.commit()
+
+    if request.is_json:
+        return jsonify({'ok': True})
+    flash('All active subscriptions cancelled and helper notified.', 'success')
+    return redirect(url_for('admin_subscriptions'))
+
 @app.route('/products')
 def products():
     return render_template('products.html')
@@ -736,8 +1081,6 @@ def place_order():
         priority = request.form.get('priority', 'normal')
         preferred_date = request.form.get('preferred_date', '')
         preferred_time = request.form.get('preferred_time', '')
-        budget = request.form.get('budget', '')
-        payment_preference = request.form.get('payment_preference', 'cash')
         phone = request.form.get('phone', '')
         call_time = request.form.get('call_time', 'anytime')
         image = request.files.get('image')
@@ -795,12 +1138,6 @@ def place_order():
                 if preferred_time:
                     enhanced_message += f" - {preferred_time.replace('_', ' ').title()}"
             
-            if budget:
-                enhanced_message += f"\nBudget: ₹{budget}"
-            
-            if payment_preference != 'cash':
-                enhanced_message += f"\nPayment preference: {payment_preference.replace('_', ' ').title()}"
-            
             if phone:
                 enhanced_message += f"\nContact: {phone}"
                 if call_time != 'anytime':
@@ -815,14 +1152,32 @@ def place_order():
             order_id = cur.fetchone()[0]
 
             # Notify providers in that location with matching service type
+            # Only notify providers with active subscriptions
             cur.execute(""" 
-                SELECT id, fcm_token, username
-                FROM users 
-                WHERE business_type = %s AND location = %s AND account_type = 'business'
+                SELECT u.id, u.fcm_token, u.username
+                FROM users u
+                WHERE u.business_type = %s 
+                    AND u.location = %s 
+                    AND u.account_type = 'business'
             """, (service, location))
 
             providers_notified = 0
             for provider_id, token, provider_username in cur.fetchall():
+                # Check if provider has active subscription - STRICT CHECK: Only subscribed helpers get notifications
+                cur.execute("""
+                    SELECT 1 FROM subscriptions 
+                    WHERE helper_username = %s 
+                        AND category = %s 
+                        AND status = 'active' 
+                        AND end_date >= CURRENT_DATE
+                """, (provider_username, service))
+                
+                has_active_subscription = cur.fetchone()
+                
+                # Skip if no active subscription - they won't get notified
+                if not has_active_subscription:
+                    continue
+                
                 link = url_for('order_request', order_id=order_id)
                 
                 # Create priority-specific notification message
@@ -984,6 +1339,89 @@ def order_request(order_id):
     flash("Your request has been sent to the order owner!")
     return redirect(url_for('notifications'))
 
+# New route for requesting orders with amount
+@app.route('/request_order_with_amount/<int:order_id>', methods=['POST'])
+@login_required
+def request_order_with_amount(order_id):
+    """Handle order request with amount from helper"""
+    if 'username' not in session:
+        return jsonify({'success': False, 'message': 'Not logged in'}), 401
+    
+    data = request.get_json()
+    amount = data.get('amount')
+    
+    if not amount or float(amount) <= 0:
+        return jsonify({'success': False, 'message': 'Please enter a valid amount'}), 400
+    
+    helper_username = session['username']
+    
+    with get_db_connection() as conn:
+        cur = conn.cursor()
+        
+        # Verify user is a helper
+        cur.execute("SELECT account_type FROM users WHERE username = %s", (helper_username,))
+        user = cur.fetchone()
+        
+        if not user or user[0] != 'business':
+            return jsonify({'success': False, 'message': 'Only helpers can request orders'}), 403
+        
+        # Check if already requested this order
+        cur.execute("SELECT id FROM order_requests WHERE order_id = %s AND helper_username = %s", (order_id, helper_username))
+        if cur.fetchone():
+            return jsonify({'success': False, 'message': 'You have already submitted an offer for this order'}), 400
+        
+        # Get order details and owner_id
+        cur.execute("SELECT owner_id FROM orders WHERE id = %s", (order_id,))
+        order_result = cur.fetchone()
+        if not order_result:
+            return jsonify({'success': False, 'message': 'Order not found'}), 404
+        
+        owner_id = order_result[0]
+        
+        # Insert order request with amount
+        cur.execute("""
+            INSERT INTO order_requests (order_id, helper_username, amount, status)
+            VALUES (%s, %s, %s, 'pending')
+        """, (order_id, helper_username, amount))
+
+        # Ensure a corresponding row exists in order_acceptance for this helper
+        cur.execute("SELECT id FROM users WHERE username = %s", (helper_username,))
+        helper_id_row = cur.fetchone()
+        if helper_id_row:
+            helper_id = helper_id_row[0] if not isinstance(helper_id_row, dict) else helper_id_row.get('id')
+            cur.execute("""
+                SELECT 1 FROM order_acceptance WHERE order_id = %s AND provider_id = %s
+            """, (order_id, helper_id))
+            if not cur.fetchone():
+                cur.execute("""
+                    INSERT INTO order_acceptance (order_id, provider_id, accepted)
+                    VALUES (%s, %s, FALSE)
+                """, (order_id, helper_id))
+        
+        # Get helper ID for notification
+        cur.execute("SELECT id FROM users WHERE username = %s", (helper_username,))
+        helper_id = cur.fetchone()[0]
+        
+        # Create notification for the user
+        cur.execute(""" 
+            INSERT INTO notifications (to_user_id, from_user_id, order_id, message, created_at, is_read)
+            VALUES (%s, %s, %s, %s, NOW(), FALSE)
+        """, (owner_id, helper_id, order_id, f"{helper_username} submitted an offer of ₹{amount} for your order"))
+        
+        # Send push notification
+        cur.execute("SELECT fcm_token FROM users WHERE id = %s", (owner_id,))
+        token_result = cur.fetchone()
+        if token_result and token_result[0]:
+            send_push_notification(
+                token_result[0], 
+                "New Offer Received", 
+                f"{helper_username} offered ₹{amount} for your order"
+            )
+        
+        conn.commit()
+    
+    return jsonify({'success': True, 'message': 'Your offer has been sent successfully!'})
+
 @app.route('/notifications')
 def notifications():
     if 'username' not in session:
@@ -1007,19 +1445,20 @@ def notifications():
         n.created_at AS notif_created_at, 
         n.is_read,
         (
-            SELECT u_provider.username
-            FROM order_acceptance oa
-            JOIN users u_provider ON u_provider.id = oa.provider_id
-            WHERE oa.order_id = n.order_id 
-              AND final_selected = TRUE
+            SELECT r.helper_username
+            FROM order_requests r
+            WHERE r.order_id = n.order_id AND r.status = 'accepted'
             LIMIT 1
         ) AS approved_provider,
         (
             SELECT username FROM users WHERE id = o.owner_id
         ) AS owner_username,
         (
-            SELECT COUNT(*) FROM order_acceptance 
-            WHERE order_id = n.order_id AND provider_id = u_from.id
+            SELECT phone FROM users WHERE id = o.owner_id
+        ) AS owner_phone,
+        (
+            SELECT COUNT(*) FROM order_requests
+            WHERE order_id = n.order_id AND helper_username = %s
         ) AS has_requested
     FROM notifications n
     JOIN users u_from ON u_from.id = n.from_user_id
@@ -1031,12 +1470,45 @@ def notifications():
         SELECT id FROM users WHERE username = %s
     )
     ORDER BY n.id DESC
-    """, (session['username'],))
+    """, (session['username'], session['username'],))
 
     notes = cur.fetchall()
+    
+    # Check if current user is a helper and has active subscription
+    cur.execute("""
+        SELECT account_type, business_type FROM users WHERE username = %s
+    """, (session['username'],))
+    user_info = cur.fetchone()
+    
+    has_active_subscription = False
+    subscription_plan_exists = False
+    business_type = None
+    
+    if user_info and user_info['account_type'] == 'business':
+        business_type = user_info['business_type']
+        
+        # Check if subscription plan exists for this category
+        cur.execute("SELECT 1 FROM subscription_plans WHERE category = %s", (business_type,))
+        subscription_plan_exists = cur.fetchone() is not None
+        
+        # Check if user has active subscription
+        if subscription_plan_exists:
+            cur.execute("""
+                SELECT 1 FROM subscriptions 
+                WHERE helper_username = %s 
+                    AND category = %s 
+                    AND status = 'active' 
+                    AND end_date >= CURRENT_DATE
+            """, (session['username'], business_type))
+            has_active_subscription = cur.fetchone() is not None
+    
     cur.close()
     conn.close()
-    return render_template('notification.html', notifications=notes)
+    return render_template('notification.html', 
+                         notifications=notes, 
+                         has_active_subscription=has_active_subscription,
+                         subscription_plan_exists=subscription_plan_exists,
+                         business_type=business_type)
 
 @app.route('/api/notifications')
 def api_notifications():
@@ -1060,19 +1532,20 @@ def api_notifications():
         n.created_at AS notif_created_at, 
         n.is_read,
         (
-            SELECT u_provider.username
-            FROM order_acceptance oa
-            JOIN users u_provider ON u_provider.id = oa.provider_id
-            WHERE oa.order_id = n.order_id 
-              AND final_selected = TRUE
+            SELECT r.helper_username
+            FROM order_requests r
+            WHERE r.order_id = n.order_id AND r.status = 'accepted'
             LIMIT 1
         ) AS approved_provider,
         (
             SELECT username FROM users WHERE id = o.owner_id
         ) AS owner_username,
         (
-            SELECT COUNT(*) FROM order_acceptance 
-            WHERE order_id = n.order_id AND provider_id = u_from.id
+            SELECT phone FROM users WHERE id = o.owner_id
+        ) AS owner_phone,
+        (
+            SELECT COUNT(*) FROM order_requests
+            WHERE order_id = n.order_id AND helper_username = %s
         ) AS has_requested
     FROM notifications n
     JOIN users u_from ON u_from.id = n.from_user_id
@@ -1084,7 +1557,7 @@ def api_notifications():
         SELECT id FROM users WHERE username = %s
     )
     ORDER BY n.id DESC
-    """, (session['username'],))
+    """, (session['username'], session['username'],))
 
     rows = cur.fetchall()
     cur.close()
@@ -1500,9 +1973,18 @@ def order_details(order_id):
         cur.execute("SELECT id FROM users WHERE username = %s", (session['username'],))
         current_user = cur.fetchone()
         
-        # User can access if they are the owner, approved provider, or admin
+        # Also allow access if this user is the accepted helper via order_requests
+        cur.execute("""
+            SELECT 1 FROM order_requests 
+            WHERE order_id = %s AND helper_username = %s AND status = 'accepted'
+            LIMIT 1
+        """, (order_id, session['username']))
+        has_access_via_requests = cur.fetchone() is not None
+        
+        # User can access if they are the owner, approved provider (either source), or admin
         if (order['owner_id'] != current_user['id'] and 
             order.get('approved_provider') != session['username'] and 
+            not has_access_via_requests and
             session['username'] != 'adime'):
             flash("You don't have permission to view this order", "error")
             return redirect(url_for('notifications'))
@@ -1811,6 +2293,404 @@ def mark_all_read():
     
     flash("All notifications marked as read", "success")
     return redirect(url_for('notifications'))
+
+# ---------- WALLET & SUBSCRIPTIONS ----------
+@app.route('/wallet')
+@login_required
+def wallet():
+    """Display wallet and subscription plans"""
+    if 'username' not in session:
+        return redirect(url_for('login'))
+    
+    with get_db_connection() as conn:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        
+        # Get current user info
+        cur.execute("SELECT business_type, account_type FROM users WHERE username = %s", (session['username'],))
+        user = cur.fetchone()
+        
+        if not user or user['account_type'] != 'business':
+            flash("Wallet feature is only available for helpers.", "error")
+            return redirect(url_for('home'))
+        
+        # Get subscription plan for this category
+        cur.execute("SELECT * FROM subscription_plans WHERE category = %s", (user['business_type'],))
+        plan = cur.fetchone()
+        
+        # Get all active/expired subscriptions for this helper
+        cur.execute("""
+            SELECT * FROM subscriptions 
+            WHERE helper_username = %s 
+            ORDER BY created_at DESC
+        """, (session['username'],))
+        history = cur.fetchall()
+        
+        # Auto-update expired subscriptions
+        cur.execute("""
+            UPDATE subscriptions 
+            SET status = 'expired' 
+            WHERE helper_username = %s 
+            AND end_date < CURRENT_DATE 
+            AND status = 'active'
+        """, (session['username'],))
+        conn.commit()
+        
+        # Prepare plan data with status
+        plans = []
+        if plan:
+            # Check if user has active subscription
+            cur.execute("SELECT CURRENT_DATE")
+            current_date = cur.fetchone()['current_date']
+            
+            active_sub = None
+            for sub in history:
+                if sub['status'] == 'active' and sub['end_date'] >= current_date:
+                    if active_sub is None or sub['end_date'] > active_sub['end_date']:
+                        active_sub = sub
+            
+            plan_dict = dict(plan)
+            plan_dict['is_active'] = False
+            plan_dict['is_expired'] = False
+            
+            if active_sub:
+                plan_dict['is_active'] = True
+                plan_dict['end_date'] = active_sub['end_date']
+            elif history:
+                plan_dict['is_expired'] = True
+            
+            # Add icon based on category
+            category_icons = {
+                'Cleaning': '🧹',
+                'Plumbing': '🔧',
+                'Electrician': '⚡',
+                'Vehicle': '🚗',
+                'Painting': '🎨',
+                'Carpentry': '🪚'
+            }
+            plan_dict['icon'] = category_icons.get(user['business_type'], '💼')
+            
+            plans = [plan_dict]
+        
+        # Check if subscription is expired and show message
+        subscription_message = None
+        if history:
+            latest = history[0]
+            if latest['status'] == 'expired':
+                subscription_message = "Your subscription has expired. Please re-subscribe to receive new orders."
+        
+        return render_template('subscription.html', plans=plans, history=history, subscription_message=subscription_message)
+
+@app.route('/subscribe/<category>', methods=['POST'])
+@login_required
+def subscribe(category):
+    """Handle subscription payment"""
+    if 'username' not in session:
+        return redirect(url_for('login'))
+    
+    with get_db_connection() as conn:
+        cur = conn.cursor()
+        
+        # Verify user is a helper
+        cur.execute("SELECT account_type FROM users WHERE username = %s", (session['username'],))
+        user = cur.fetchone()
+        
+        if not user or user[0] != 'business':
+            flash("Only helpers can subscribe.", "error")
+            return redirect(url_for('wallet'))
+        
+        # Get subscription plan
+        cur.execute("SELECT * FROM subscription_plans WHERE category = %s", (category,))
+        plan = cur.fetchone()
+        
+        if not plan:
+            flash("Subscription plan not found for this category.", "error")
+            return redirect(url_for('wallet'))
+        
+        # Check if already has active subscription
+        cur.execute("""
+            SELECT * FROM subscriptions 
+            WHERE helper_username = %s 
+            AND category = %s 
+            AND status = 'active' 
+            AND end_date >= CURRENT_DATE
+        """, (session['username'], category))
+        existing = cur.fetchone()
+        
+        if existing:
+            flash("You already have an active subscription for this category.", "info")
+            return redirect(url_for('wallet'))
+        
+        # Create subscription (7 days from now)
+        from datetime import datetime, timedelta
+        start_date = datetime.now().date()
+        end_date = start_date + timedelta(days=7)
+        
+        cur.execute("""
+            INSERT INTO subscriptions (helper_username, category, start_date, end_date, status)
+            VALUES (%s, %s, %s, %s, 'active')
+        """, (session['username'], category, start_date, end_date))
+        
+        conn.commit()
+        
+        flash(f"Successfully subscribed to {category} plan for 1 week!", "success")
+        return redirect(url_for('wallet'))
+
+# ---------- ORDER OFFERS MANAGEMENT ----------
+@app.route('/view_offers/<int:order_id>')
+@login_required
+def view_offers(order_id):
+    """Display all offers for a user's order"""
+    if 'username' not in session:
+        return redirect(url_for('login'))
+    
+    with get_db_connection() as conn:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        
+        # Verify user owns this order
+        cur.execute("SELECT owner_id FROM orders WHERE id = %s", (order_id,))
+        order_result = cur.fetchone()
+        
+        if not order_result:
+            flash("Order not found.", "error")
+            return redirect(url_for('home'))
+        
+        # Check if current user is the owner
+        cur.execute("SELECT id FROM users WHERE username = %s", (session['username'],))
+        current_user = cur.fetchone()
+        
+        if order_result['owner_id'] != current_user['id']:
+            flash("You don't have permission to view this order.", "error")
+            return redirect(url_for('home'))
+        
+        # Get order details
+        cur.execute("""
+            SELECT o.*, s.service_name, l.location_name 
+            FROM orders o
+            JOIN services s ON s.id = o.service_id
+            JOIN locations l ON l.id = o.location_id
+            WHERE o.id = %s
+        """, (order_id,))
+        order = cur.fetchone()
+        
+        # Get all offers for this order with helper info
+        cur.execute("""
+            SELECT 
+                or_req.*,
+                u.username,
+                u.business_type,
+                u.location,
+                u.profile_pic,
+                u.phone,
+                COALESCE(AVG(f.rating), 0) as avg_rating,
+                COUNT(f.id) as review_count
+            FROM order_requests or_req
+            JOIN users u ON u.username = or_req.helper_username
+            LEFT JOIN feedback f ON f.to_user_id = u.id
+            WHERE or_req.order_id = %s
+            GROUP BY or_req.id, u.id
+            ORDER BY or_req.timestamp DESC
+        """, (order_id,))
+        offers = cur.fetchall()
+        
+        # Auto-expire old requests (older than 24 hours)
+        cur.execute("""
+            UPDATE order_requests 
+            SET status = 'expired' 
+            WHERE order_id = %s 
+                AND status = 'pending' 
+                AND timestamp < NOW() - INTERVAL '24 hours'
+        """, (order_id,))
+        conn.commit()
+    
+    return render_template('view_offers.html', order=order, offers=offers)
+
+@app.route('/accept_offer/<int:request_id>', methods=['POST'])
+@login_required
+def accept_offer(request_id):
+    """Accept a helper's offer"""
+    if 'username' not in session:
+        return redirect(url_for('login'))
+    
+    with get_db_connection() as conn:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        
+        # Get request details
+        cur.execute("SELECT * FROM order_requests WHERE id = %s", (request_id,))
+        req = cur.fetchone()
+        
+        if not req:
+            flash("Offer not found.", "error")
+            return redirect(url_for('home'))
+        
+        # Verify user owns this order
+        cur.execute("SELECT owner_id FROM orders WHERE id = %s", (req['order_id'],))
+        order_owner_id = cur.fetchone()['owner_id']
+        
+        cur.execute("SELECT id FROM users WHERE username = %s", (session['username'],))
+        current_user_id = cur.fetchone()['id']
+        
+        if order_owner_id != current_user_id:
+            flash("You don't have permission to accept this offer.", "error")
+            return redirect(url_for('home'))
+        
+        # Update accepted offer in order_requests
+        cur.execute("""
+            UPDATE order_requests 
+            SET status = 'accepted' 
+            WHERE id = %s
+        """, (request_id,))
+        
+        # Reject all other pending offers for this order
+        cur.execute("""
+            UPDATE order_requests 
+            SET status = 'rejected' 
+            WHERE order_id = %s 
+                AND id != %s 
+                AND status = 'pending'
+        """, (req['order_id'], request_id))
+
+        # Reflect selection in order_acceptance table as the canonical approval source
+        # Get helper's user id
+        cur.execute("SELECT id FROM users WHERE username = %s", (req['helper_username'],))
+        ah_row = cur.fetchone()
+        accepted_helper_id = ah_row['id'] if ah_row and 'id' in ah_row else None
+
+        # Mark final selected helper
+        if accepted_helper_id:
+            cur.execute("""
+                UPDATE order_acceptance SET final_selected = TRUE, accepted = TRUE
+                WHERE order_id = %s AND provider_id = %s
+            """, (req['order_id'], accepted_helper_id))
+
+        # Mark all others as not accepted
+        cur.execute("""
+            UPDATE order_acceptance SET accepted = FALSE, final_selected = FALSE
+            WHERE order_id = %s AND provider_id != %s
+        """, (req['order_id'], accepted_helper_id if accepted_helper_id else -1))
+
+        # Update orders table with status and accepted helper if columns exist (prevent exceptions)
+        cur.execute("""
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = 'orders' AND column_name IN ('status','accepted_helper')
+        """)
+        cols = {row['column_name'] for row in cur.fetchall()} if cur.description else set()
+        set_clauses = []
+        params = []
+        if 'status' in cols:
+            set_clauses.append("status = 'accepted'")
+        if 'accepted_helper' in cols:
+            set_clauses.append("accepted_helper = %s")
+            params.append(req['helper_username'])
+        if set_clauses:
+            sql = f"UPDATE orders SET {', '.join(set_clauses)} WHERE id = %s"
+            params.append(req['order_id'])
+            cur.execute(sql, tuple(params))
+
+        # Fetch contextual info for notifications
+        cur.execute("""
+            SELECT s.service_name, u_owner.username AS owner_username
+            FROM orders o
+            JOIN services s ON s.id = o.service_id
+            JOIN users u_owner ON u_owner.id = o.owner_id
+            WHERE o.id = %s
+        """, (req['order_id'],))
+        ctx = cur.fetchone() or {}
+        
+        # Notify the accepted helper
+        cur.execute("SELECT id, phone FROM users WHERE username = %s", (req['helper_username'],))
+        helper_row = cur.fetchone() or {}
+        helper_id = helper_row.get('id')
+
+        service_name = ctx.get('service_name', 'this service')
+        approved_msg = f"🎉 Your request for {service_name} has been approved!"
+        if helper_id:
+            cur.execute("""
+                INSERT INTO notifications (to_user_id, from_user_id, order_id, message, created_at, is_read)
+                VALUES (%s, %s, %s, %s, NOW(), FALSE)
+            """, (helper_id, current_user_id, req['order_id'], approved_msg))
+
+        # Push notification to accepted helper
+        if helper_id:
+            cur.execute("SELECT fcm_token FROM users WHERE id = %s", (helper_id,))
+            token_result = cur.fetchone()
+            if token_result and token_result.get('fcm_token'):
+                send_push_notification(
+                    token_result['fcm_token'],
+                    "Offer Approved",
+                    approved_msg
+                )
+
+        # Notify rejected helpers (those who requested this order but weren't selected)
+        cur.execute("""
+            SELECT DISTINCT u.id, u.username, u.fcm_token
+            FROM order_requests r
+            JOIN users u ON u.username = r.helper_username
+            WHERE r.order_id = %s AND r.id != %s AND r.status != 'accepted'
+        """, (req['order_id'], request_id))
+        rejected_rows = cur.fetchall()
+        rejection_msg = f"❌ Your request for {service_name} was not approved."
+        for rhelper in rejected_rows:
+            cur.execute("""
+                INSERT INTO notifications (to_user_id, from_user_id, order_id, message, created_at, is_read)
+                VALUES (%s, %s, %s, %s, NOW(), FALSE)
+            """, (rhelper['id'], current_user_id, req['order_id'], rejection_msg))
+            if rhelper and ('fcm_token' in rhelper) and rhelper['fcm_token']:
+                send_push_notification(rhelper['fcm_token'], "Request Not Approved", rejection_msg)
+        
+        conn.commit()
+    
+    flash(f"You accepted the offer of ₹{req['amount']} from {req['helper_username']}", "success")
+    return redirect(url_for('view_offers', order_id=req['order_id']))
+
+@app.route('/my_requests')
+@login_required
+def my_requests():
+    """Display helper's order requests"""
+    if 'username' not in session:
+        return redirect(url_for('login'))
+    
+    with get_db_connection() as conn:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        
+        # Verify user is a helper
+        cur.execute("SELECT account_type FROM users WHERE username = %s", (session['username'],))
+        user = cur.fetchone()
+        
+        if not user or user['account_type'] != 'business':
+            flash("This feature is only available for helpers.", "error")
+            return redirect(url_for('home'))
+        
+        # Get all requests by this helper with order details
+        cur.execute("""
+            SELECT 
+                or_req.*,
+                o.message as order_message,
+                o.created_at as order_created_at,
+                o.image_path,
+                s.service_name,
+                l.location_name,
+                (SELECT username FROM users WHERE id = o.owner_id) as customer_username
+            FROM order_requests or_req
+            JOIN orders o ON o.id = or_req.order_id
+            JOIN services s ON s.id = o.service_id
+            JOIN locations l ON l.id = o.location_id
+            WHERE or_req.helper_username = %s
+            ORDER BY or_req.timestamp DESC
+        """, (session['username'],))
+        requests = cur.fetchall()
+        
+        # Auto-expire old requests
+        cur.execute("""
+            UPDATE order_requests 
+            SET status = 'expired' 
+            WHERE helper_username = %s 
+                AND status = 'pending' 
+                AND timestamp < NOW() - INTERVAL '24 hours'
+        """, (session['username'],))
+        conn.commit()
+    
+    return render_template('my_requests.html', requests=requests)
 
 
 if __name__ == '__main__':
