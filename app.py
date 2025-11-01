@@ -495,8 +495,81 @@ def delete_user(username):
 
     with get_db_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("DELETE FROM users WHERE username=%s", (username,))
-        conn.commit()
+        
+        try:
+            # Get the user's ID first
+            cursor.execute("SELECT id FROM users WHERE username=%s", (username,))
+            user_result = cursor.fetchone()
+            
+            if not user_result:
+                flash("User not found.", "error")
+                return redirect(url_for('admin_dashboard'))
+            
+            user_id = user_result[0]
+            
+            # Get all orders owned by this user
+            cursor.execute("SELECT id FROM orders WHERE owner_id=%s", (user_id,))
+            order_ids = [row[0] for row in cursor.fetchall()]
+            
+            # Delete related records in the correct order to avoid foreign key violations
+            if order_ids:
+                # Build placeholder string for IN clause
+                placeholders = ','.join(['%s'] * len(order_ids))
+                
+                # Delete order_acceptance records that reference these orders
+                cursor.execute(f"""
+                    DELETE FROM order_acceptance 
+                    WHERE order_id IN ({placeholders})
+                """, tuple(order_ids))
+                
+                # Delete order_requests records that reference these orders
+                cursor.execute(f"""
+                    DELETE FROM order_requests 
+                    WHERE order_id IN ({placeholders})
+                """, tuple(order_ids))
+                
+                # Delete notifications that reference these orders
+                cursor.execute(f"""
+                    DELETE FROM notifications 
+                    WHERE order_id IN ({placeholders})
+                """, tuple(order_ids))
+            
+            # Also delete order_acceptance records where user is a provider
+            cursor.execute("DELETE FROM order_acceptance WHERE provider_id=%s", (user_id,))
+            
+            # Delete notifications where user is the recipient or sender
+            cursor.execute("DELETE FROM notifications WHERE to_user_id=%s OR from_user_id=%s", (user_id, user_id))
+            
+            # Delete subscriptions for this user
+            cursor.execute("DELETE FROM subscriptions WHERE helper_username=%s", (username,))
+            
+            # Delete ratings for this user (if ratings table exists, ignore if it doesn't)
+            # Check if ratings table exists first
+            cursor.execute("""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_name = 'ratings'
+                )
+            """)
+            ratings_table_exists = cursor.fetchone()[0]
+            
+            if ratings_table_exists:
+                cursor.execute("""
+                    DELETE FROM ratings 
+                    WHERE rater_id=%s OR rated_user_id=%s
+                """, (user_id, user_id))
+            
+            # Now delete the user (this will cascade delete orders if FK is set up with CASCADE)
+            cursor.execute("DELETE FROM users WHERE username=%s", (username,))
+            conn.commit()
+            flash("User deleted successfully.", "success")
+            
+        except Exception as e:
+            conn.rollback()
+            flash(f"Error deleting user: {str(e)}", "error")
+            import traceback
+            traceback.print_exc()
+    
     return redirect(url_for('admin_dashboard'))
 
 # Route: Upload Ads (Admin only)
