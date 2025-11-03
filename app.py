@@ -16,7 +16,9 @@ import cloudinary.api
 from functools import wraps
 import uuid
 import random
-from datetime import timedelta
+from datetime import timedelta, datetime
+import threading
+import time
 
 
 # after your other imports, before using Cloudinary
@@ -192,9 +194,16 @@ def init_db():
                 start_date DATE NOT NULL,
                 end_date DATE NOT NULL,
                 status TEXT NOT NULL DEFAULT 'active',
+                total_due NUMERIC DEFAULT 0,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
+        
+        # Add total_due column if it doesn't exist
+        try:
+            cursor.execute("ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS total_due NUMERIC DEFAULT 0")
+        except Exception:
+            pass
         
         # Create order_requests table
         cursor.execute('''
@@ -208,6 +217,44 @@ def init_db():
                 UNIQUE(order_id, helper_username)
             )
         ''')
+        
+        # Create order_otps table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS order_otps (
+                id SERIAL PRIMARY KEY,
+                order_id INTEGER NOT NULL,
+                otp TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT NOW(),
+                expires_at TIMESTAMP NOT NULL,
+                is_verified BOOLEAN DEFAULT FALSE,
+                verified_at TIMESTAMP
+            )
+        ''')
+        
+        # Create helper_fines table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS helper_fines (
+                id SERIAL PRIMARY KEY,
+                helper_username TEXT NOT NULL,
+                order_id INTEGER NOT NULL,
+                fine_amount NUMERIC DEFAULT 0,
+                status TEXT DEFAULT 'unpaid',
+                fine_reason TEXT,
+                created_at TIMESTAMP DEFAULT NOW(),
+                paid_at TIMESTAMP
+            )
+        ''')
+        
+        # Add order verification status and progress tracking columns
+        try:
+            cursor.execute("ALTER TABLE orders ADD COLUMN IF NOT EXISTS is_verified BOOLEAN DEFAULT FALSE")
+            cursor.execute("ALTER TABLE orders ADD COLUMN IF NOT EXISTS verified_at TIMESTAMP")
+            cursor.execute("ALTER TABLE orders ADD COLUMN IF NOT EXISTS verification_deadline TIMESTAMP")
+            cursor.execute("ALTER TABLE orders ADD COLUMN IF NOT EXISTS user_action TEXT")
+            cursor.execute("ALTER TABLE orders ADD COLUMN IF NOT EXISTS user_action_at TIMESTAMP")
+            cursor.execute("ALTER TABLE orders ADD COLUMN IF NOT EXISTS verification_helper_id INTEGER")
+        except Exception:
+            pass
         
         conn.commit()
 
@@ -928,22 +975,45 @@ def edit_profile():
         if request.method == 'POST':
             bio = request.form.get('bio', '')
             price = request.form.get('price', '')
+            phone = request.form.get('phone', '')
+            location = request.form.get('location', '')
+            street = request.form.get('street', '')
 
-            # Handle profile picture update
+            # Handle profile picture update (camera capture for helpers, file upload for users)
             profile_pic_file = request.files.get('profile_pic')
             filename = None
+            
+            # Check if user is a helper (business account)
+            cursor.execute("SELECT account_type FROM users WHERE username = %s", (username,))
+            account_type_result = cursor.fetchone()
+            is_helper = account_type_result and account_type_result.get('account_type') == 'business'
+            
             if profile_pic_file and allowed_file(profile_pic_file.filename):
                 filename = upload_to_cloudinary(profile_pic_file)
 
-            # Update user details
+            # Update user details based on account type
             if filename:
-                cursor.execute("""
-                    UPDATE users SET bio=%s, price=%s, profile_pic=%s WHERE username=%s
-                """, (bio, price, filename, username))
+                if is_helper:
+                    # Helper: update all fields including price
+                    cursor.execute("""
+                        UPDATE users SET bio=%s, price=%s, profile_pic=%s, phone=%s, location=%s, street=%s WHERE username=%s
+                    """, (bio, price, filename, phone, location, street, username))
+                else:
+                    # User: update without price
+                    cursor.execute("""
+                        UPDATE users SET bio=%s, profile_pic=%s, phone=%s, location=%s, street=%s WHERE username=%s
+                    """, (bio, filename, phone, location, street, username))
             else:
-                cursor.execute("""
-                    UPDATE users SET bio=%s, price=%s WHERE username=%s
-                """, (bio, price, username))
+                if is_helper:
+                    # Helper: update without profile pic but with price
+                    cursor.execute("""
+                        UPDATE users SET bio=%s, price=%s, phone=%s, location=%s, street=%s WHERE username=%s
+                    """, (bio, price, phone, location, street, username))
+                else:
+                    # User: update without profile pic and without price
+                    cursor.execute("""
+                        UPDATE users SET bio=%s, phone=%s, location=%s, street=%s WHERE username=%s
+                    """, (bio, phone, location, street, username))
 
             conn.commit()
             flash('Profile updated successfully.', 'success')
@@ -2082,6 +2152,12 @@ def order_details(order_id):
             ORDER BY oa.id DESC
         """, (order_id,))
         accepted_providers = cur.fetchall()
+        
+        # Get verification status and deadline for order
+        order['is_verified'] = order.get('is_verified', False)
+        order['verification_deadline'] = order.get('verification_deadline')
+        order['user_action'] = order.get('user_action')
+        order['verification_helper_id'] = order.get('verification_helper_id')
 
     return render_template('order_details.html', 
                          order=order, 
@@ -2451,7 +2527,31 @@ def wallet():
             if latest['status'] == 'expired':
                 subscription_message = "Your subscription has expired. Please re-subscribe to receive new orders."
         
-        return render_template('subscription.html', plans=plans, history=history, subscription_message=subscription_message)
+        # Get unpaid fines for this helper
+        cur.execute("""
+            SELECT SUM(fine_amount) as total_fines, COUNT(*) as fine_count
+            FROM helper_fines
+            WHERE helper_username = %s AND status = 'unpaid'
+        """, (session['username'],))
+        fines_info = cur.fetchone()
+        total_fines = fines_info['total_fines'] or 0
+        fine_count = fines_info['fine_count'] or 0
+        
+        # Get individual fines for display
+        cur.execute("""
+            SELECT * FROM helper_fines
+            WHERE helper_username = %s AND status = 'unpaid'
+            ORDER BY created_at DESC
+        """, (session['username'],))
+        unpaid_fines = cur.fetchall()
+        
+        return render_template('subscription.html', 
+                             plans=plans, 
+                             history=history, 
+                             subscription_message=subscription_message,
+                             total_fines=total_fines,
+                             fine_count=fine_count,
+                             unpaid_fines=unpaid_fines)
 
 @app.route('/subscribe/<category>', methods=['POST'])
 @login_required
@@ -2493,19 +2593,42 @@ def subscribe(category):
             flash("You already have an active subscription for this category.", "info")
             return redirect(url_for('wallet'))
         
+        # Get unpaid fines for this helper
+        cur.execute("""
+            SELECT SUM(fine_amount) as total_fines
+            FROM helper_fines
+            WHERE helper_username = %s AND status = 'unpaid'
+        """, (session['username'],))
+        fines_info = cur.fetchone()
+        total_fines = fines_info['total_fines'] or 0
+        
+        # Calculate total due (subscription + fines)
+        total_due = plan[2] + total_fines  # plan[2] is amount
+        
         # Create subscription (7 days from now)
         from datetime import datetime, timedelta
         start_date = datetime.now().date()
         end_date = start_date + timedelta(days=7)
         
+        # Mark fines as paid when subscription is created
+        if total_fines > 0:
+            cur.execute("""
+                UPDATE helper_fines
+                SET status = 'paid', paid_at = NOW()
+                WHERE helper_username = %s AND status = 'unpaid'
+            """, (session['username'],))
+        
         cur.execute("""
-            INSERT INTO subscriptions (helper_username, category, start_date, end_date, status)
-            VALUES (%s, %s, %s, %s, 'active')
-        """, (session['username'], category, start_date, end_date))
+            INSERT INTO subscriptions (helper_username, category, start_date, end_date, status, total_due)
+            VALUES (%s, %s, %s, %s, 'active', %s)
+        """, (session['username'], category, start_date, end_date, total_due))
         
         conn.commit()
         
-        flash(f"Successfully subscribed to {category} plan for 1 week!", "success")
+        if total_fines > 0:
+            flash(f"Successfully subscribed to {category} plan for 1 week! Total paid: ₹{total_due} (₹{plan[2]} subscription + ₹{total_fines} fines)", "success")
+        else:
+            flash(f"Successfully subscribed to {category} plan for 1 week!", "success")
         return redirect(url_for('wallet'))
 
 # ---------- ORDER OFFERS MANAGEMENT ----------
@@ -2766,6 +2889,448 @@ def my_requests():
     return render_template('my_requests.html', requests=requests)
 
 
+# ---------- OTP VERIFICATION SYSTEM ----------
+@app.route('/generate_otp/<int:order_id>', methods=['POST'])
+@login_required
+def generate_otp(order_id):
+    """Generate OTP for order verification (Helper side)"""
+    if 'username' not in session:
+        return jsonify({'success': False, 'message': 'Not authenticated'}), 401
+    
+    with get_db_connection() as conn:
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        
+        # Verify helper is the approved provider for this order and get order details
+        cursor.execute("""
+            SELECT o.id, o.owner_id, o.message as order_message,
+                   (SELECT id FROM users WHERE username = %s) as helper_id,
+                   (SELECT username FROM users WHERE id = o.owner_id) as owner_username,
+                   (SELECT username FROM users WHERE username = %s) as helper_username,
+                   (SELECT service_name FROM services WHERE id = o.service_id) as service_name,
+                   (SELECT location_name FROM locations WHERE id = o.location_id) as location_name
+            FROM orders o
+            LEFT JOIN order_requests r ON r.order_id = o.id 
+                AND r.helper_username = %s AND r.status = 'accepted'
+            LEFT JOIN order_acceptance oa ON oa.order_id = o.id 
+                AND oa.provider_id = (SELECT id FROM users WHERE username = %s)
+                AND (oa.final_selected = TRUE OR oa.accepted = TRUE)
+            WHERE o.id = %s
+            LIMIT 1
+        """, (session['username'], session['username'], session['username'], session['username'], order_id))
+        
+        order_info = cursor.fetchone()
+        
+        if not order_info:
+            return jsonify({'success': False, 'message': 'Order not found or you are not the approved helper'}), 404
+        
+        # Check if already verified
+        cursor.execute("SELECT is_verified FROM orders WHERE id = %s", (order_id,))
+        order_check = cursor.fetchone()
+        if order_check and order_check.get('is_verified'):
+            return jsonify({'success': False, 'message': 'Order already verified'}), 400
+        
+        # Generate 4-digit OTP
+        otp = str(random.randint(1000, 9999))
+        
+        # Set expiration (10 minutes)
+        expires_at = datetime.now() + timedelta(minutes=10)
+        
+        # Delete any existing OTPs for this order
+        cursor.execute("DELETE FROM order_otps WHERE order_id = %s", (order_id,))
+        
+        # Insert new OTP
+        cursor.execute("""
+            INSERT INTO order_otps (order_id, otp, expires_at)
+            VALUES (%s, %s, %s)
+        """, (order_id, otp, expires_at))
+        
+        # Notify the order owner about OTP with detailed information
+        owner_id = order_info['owner_id']
+        owner_username = order_info['owner_username']
+        helper_username = session['username']
+        service_name = order_info.get('service_name', 'Service')
+        location_name = order_info.get('location_name', 'Location')
+        order_message = order_info.get('order_message', '')
+        expires_time = expires_at.strftime("%I:%M %p")
+        
+        # Create detailed OTP notification message
+        otp_message = f"🔐 OTP for Order Verification\n\nOrder #: {order_id}\nOTP: {otp}\nValid Until: {expires_time}\n\nHelper: {helper_username}\nService: {service_name}\nLocation: {location_name}\n\nDetails: {order_message[:100]}{'...' if len(order_message) > 100 else ''}"
+        
+        cursor.execute("""
+            INSERT INTO notifications (to_user_id, from_user_id, order_id, message, created_at, is_read)
+            VALUES (%s, %s, %s, %s, NOW(), FALSE)
+        """, (owner_id, order_info['helper_id'], order_id, otp_message))
+        
+        # Send push notification to owner with concise message
+        push_title = f"🔐 OTP for Order #{order_id}"
+        push_body = f"OTP: {otp} | Valid until {expires_time} | Helper: {helper_username}"
+        
+        cursor.execute("SELECT fcm_token FROM users WHERE id = %s", (owner_id,))
+        owner_token = cursor.fetchone()
+        if owner_token and owner_token.get('fcm_token'):
+            send_push_notification(
+                owner_token['fcm_token'],
+                push_title,
+                push_body
+            )
+        
+        conn.commit()
+        
+        return jsonify({'success': True, 'message': 'OTP generated and sent to the order owner'})
+
+@app.route('/verify_otp/<int:order_id>', methods=['POST'])
+@login_required
+def verify_otp(order_id):
+    """Verify OTP entered by helper"""
+    if 'username' not in session:
+        return jsonify({'success': False, 'message': 'Not authenticated'}), 401
+    
+    data = request.get_json()
+    entered_otp = data.get('otp', '').strip()
+    
+    if not entered_otp or len(entered_otp) != 4:
+        return jsonify({'success': False, 'message': 'Invalid OTP format'}), 400
+    
+    with get_db_connection() as conn:
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        
+        # Verify helper is the approved provider
+        cursor.execute("""
+            SELECT o.id, o.owner_id,
+                   (SELECT id FROM users WHERE username = %s) as helper_id,
+                   (SELECT username FROM users WHERE id = o.owner_id) as owner_username
+            FROM orders o
+            LEFT JOIN order_requests r ON r.order_id = o.id 
+                AND r.helper_username = %s AND r.status = 'accepted'
+            LEFT JOIN order_acceptance oa ON oa.order_id = o.id 
+                AND oa.provider_id = (SELECT id FROM users WHERE username = %s)
+                AND (oa.final_selected = TRUE OR oa.accepted = TRUE)
+            WHERE o.id = %s
+            LIMIT 1
+        """, (session['username'], session['username'], session['username'], order_id))
+        
+        order_info = cursor.fetchone()
+        
+        if not order_info:
+            return jsonify({'success': False, 'message': 'Order not found or you are not the approved helper'}), 404
+        
+        # First, delete all expired OTPs (security: auto-cleanup expired OTPs)
+        cursor.execute("DELETE FROM order_otps WHERE expires_at < NOW()")
+        
+        # Get current OTP for this order
+        cursor.execute("""
+            SELECT otp, expires_at, is_verified
+            FROM order_otps
+            WHERE order_id = %s
+            ORDER BY created_at DESC
+            LIMIT 1
+        """, (order_id,))
+        
+        otp_record = cursor.fetchone()
+        
+        if not otp_record:
+            return jsonify({'success': False, 'message': 'No OTP found for this order. Please generate one first.'}), 404
+        
+        # Check if already verified
+        if otp_record['is_verified']:
+            return jsonify({'success': False, 'message': 'OTP already verified'}), 400
+        
+        # Check if expired (double check after cleanup)
+        if datetime.now() > otp_record['expires_at']:
+            # Delete this expired OTP
+            cursor.execute("DELETE FROM order_otps WHERE order_id = %s", (order_id,))
+            conn.commit()
+            return jsonify({'success': False, 'message': 'OTP has expired. Please generate a new one.'}), 400
+        
+        # Verify OTP
+        if entered_otp != otp_record['otp']:
+            return jsonify({'success': False, 'message': 'Invalid OTP. Please try again.'}), 400
+        
+        # OTP is correct - mark as verified and delete the OTP (security: one-time use)
+        cursor.execute("""
+            UPDATE order_otps 
+            SET is_verified = TRUE, verified_at = NOW()
+            WHERE order_id = %s
+        """, (order_id,))
+        
+        # Delete the OTP after successful verification for security
+        cursor.execute("DELETE FROM order_otps WHERE order_id = %s", (order_id,))
+        
+        # Mark order as verified and set verification deadline (24 hours)
+        verification_deadline = datetime.now() + timedelta(hours=24)
+        helper_id = order_info['helper_id']
+        
+        cursor.execute("""
+            UPDATE orders 
+            SET is_verified = TRUE, 
+                verified_at = NOW(),
+                verification_deadline = %s,
+                verification_helper_id = %s
+            WHERE id = %s
+        """, (verification_deadline, helper_id, order_id))
+        
+        # Notify both user and helper
+        owner_id = order_info['owner_id']
+        verification_msg_user = f"✅ Order #{order_id} has been verified by helper. You have 24 hours to mark it as Completed, Processing, or Cancel."
+        verification_msg_helper = f"✅ Order #{order_id} verification successful! Waiting for user action."
+        
+        # Notify owner
+        cursor.execute("""
+            INSERT INTO notifications (to_user_id, from_user_id, order_id, message, created_at, is_read)
+            VALUES (%s, %s, %s, %s, NOW(), FALSE)
+        """, (owner_id, helper_id, order_id, verification_msg_user))
+        
+        # Notify helper
+        cursor.execute("""
+            INSERT INTO notifications (to_user_id, from_user_id, order_id, message, created_at, is_read)
+            VALUES (%s, %s, %s, %s, NOW(), FALSE)
+        """, (helper_id, owner_id, order_id, verification_msg_helper))
+        
+        # Send push notifications
+        cursor.execute("SELECT id, fcm_token FROM users WHERE id IN (%s, %s)", (owner_id, helper_id))
+        tokens = cursor.fetchall()
+        for token_row in tokens:
+            if token_row and token_row.get('fcm_token'):
+                if token_row['id'] == owner_id:
+                    send_push_notification(token_row['fcm_token'], "Order Verified", verification_msg_user)
+                elif token_row['id'] == helper_id:
+                    send_push_notification(token_row['fcm_token'], "Verification Successful", verification_msg_helper)
+        
+        conn.commit()
+        
+        return jsonify({'success': True, 'message': 'OTP verified successfully! Order verification completed.'})
+
+@app.route('/user_action/<int:order_id>', methods=['POST'])
+@login_required
+def user_action(order_id):
+    """Handle user action (Completed, Processing, Cancel)"""
+    if 'username' not in session:
+        return jsonify({'success': False, 'message': 'Not authenticated'}), 401
+    
+    data = request.get_json()
+    action = data.get('action', '').strip().lower()
+    
+    valid_actions = ['completed', 'processing', 'cancel']
+    if action not in valid_actions:
+        return jsonify({'success': False, 'message': 'Invalid action. Use: completed, processing, or cancel'}), 400
+    
+    with get_db_connection() as conn:
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        
+        # Verify user owns this order
+        cursor.execute("""
+            SELECT o.id, o.owner_id, o.is_verified, o.verification_helper_id,
+                   (SELECT id FROM users WHERE username = %s) as current_user_id,
+                   (SELECT username FROM users WHERE id = o.verification_helper_id) as helper_username
+            FROM orders o
+            WHERE o.id = %s AND o.owner_id = (SELECT id FROM users WHERE username = %s)
+        """, (session['username'], order_id, session['username']))
+        
+        order_info = cursor.fetchone()
+        
+        if not order_info:
+            return jsonify({'success': False, 'message': 'Order not found or you do not have permission'}), 404
+        
+        if not order_info.get('is_verified'):
+            return jsonify({'success': False, 'message': 'Order must be verified first before taking action'}), 400
+        
+        # Update order with user action
+        if action == 'processing':
+            # Extend deadline by 24 hours
+            new_deadline = datetime.now() + timedelta(hours=24)
+            cursor.execute("""
+                UPDATE orders 
+                SET user_action = %s, 
+                    user_action_at = NOW(),
+                    verification_deadline = %s
+                WHERE id = %s
+            """, (action, new_deadline, order_id))
+        else:
+            # Completed or Cancel - clear deadline
+            cursor.execute("""
+                UPDATE orders 
+                SET user_action = %s, 
+                    user_action_at = NOW(),
+                    verification_deadline = NULL
+                WHERE id = %s
+            """, (action, order_id))
+        
+        # Notify helper
+        helper_id = order_info['verification_helper_id']
+        helper_username = order_info['helper_username']
+        
+        action_messages = {
+            'completed': f'✅ Order #{order_id} has been marked as Completed by the customer.',
+            'processing': f'🔄 Order #{order_id} is marked as Processing. Timer extended by 24 hours.',
+            'cancel': f'❌ Order #{order_id} has been cancelled by the customer.'
+        }
+        
+        notification_msg = action_messages.get(action, f'Order #{order_id} action: {action}')
+        
+        if helper_id:
+            cursor.execute("""
+                INSERT INTO notifications (to_user_id, from_user_id, order_id, message, created_at, is_read)
+                VALUES (%s, %s, %s, %s, NOW(), FALSE)
+            """, (helper_id, order_info['current_user_id'], order_id, notification_msg))
+            
+            # Send push notification
+            cursor.execute("SELECT fcm_token FROM users WHERE id = %s", (helper_id,))
+            helper_token = cursor.fetchone()
+            if helper_token and helper_token.get('fcm_token'):
+                send_push_notification(helper_token['fcm_token'], f"Order {action.title()}", notification_msg)
+        
+        conn.commit()
+        
+        return jsonify({'success': True, 'message': f'Order marked as {action.title()} successfully'})
+
+@app.route('/check_order_status/<int:order_id>')
+@login_required
+def check_order_status(order_id):
+    """Check order verification status and deadline"""
+    if 'username' not in session:
+        return jsonify({'error': 'Not authenticated'}), 401
+    
+    with get_db_connection() as conn:
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        
+        cursor.execute("""
+            SELECT o.id, o.is_verified, o.verification_deadline, o.user_action, o.user_action_at,
+                   o.owner_id, o.verification_helper_id,
+                   (SELECT username FROM users WHERE id = o.owner_id) as owner_username,
+                   (SELECT id FROM users WHERE username = %s) as current_user_id
+            FROM orders o
+            WHERE o.id = %s
+        """, (session['username'], order_id))
+        
+        order = cursor.fetchone()
+        
+        if not order:
+            return jsonify({'error': 'Order not found'}), 404
+        
+        # Check if user has permission
+        if order['owner_id'] != order['current_user_id'] and order['verification_helper_id'] != order['current_user_id']:
+            # Allow if user is admin
+            if session['username'] != 'adime':
+                return jsonify({'error': 'Permission denied'}), 403
+        
+        result = {
+            'is_verified': order.get('is_verified', False),
+            'verification_deadline': order['verification_deadline'].isoformat() if order.get('verification_deadline') else None,
+            'user_action': order.get('user_action'),
+            'user_action_at': order['user_action_at'].isoformat() if order.get('user_action_at') else None,
+            'is_owner': order['owner_id'] == order['current_user_id']
+        }
+        
+        # Calculate time remaining if deadline exists
+        if result['verification_deadline']:
+            deadline = datetime.fromisoformat(result['verification_deadline'].replace('Z', '+00:00'))
+            now = datetime.now()
+            if deadline.tzinfo is None:
+                deadline = deadline.replace(tzinfo=datetime.now().astimezone().tzinfo)
+            remaining = deadline - now
+            result['time_remaining_seconds'] = max(0, int(remaining.total_seconds()))
+        else:
+            result['time_remaining_seconds'] = None
+        
+        return jsonify(result)
+
+# Background job to check for expired verifications and apply fines
+def check_expired_verifications():
+    """Background job to check for expired order verifications and apply fines"""
+    while True:
+        try:
+            with get_db_connection() as conn:
+                cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+                
+                # Find orders that have passed deadline and no user action taken
+                cursor.execute("""
+                    SELECT o.id, o.verification_helper_id, o.verification_deadline, o.user_action,
+                           (SELECT username FROM users WHERE id = o.verification_helper_id) as helper_username
+                    FROM orders o
+                    WHERE o.is_verified = TRUE
+                        AND o.verification_deadline IS NOT NULL
+                        AND o.verification_deadline < NOW()
+                        AND (o.user_action IS NULL OR o.user_action != 'completed')
+                        AND o.user_action != 'cancel'
+                """)
+                
+                expired_orders = cursor.fetchall()
+                
+                FINE_AMOUNT = 50  # ₹50 fine
+                
+                for order in expired_orders:
+                    # Check if fine already applied
+                    cursor.execute("""
+                        SELECT id FROM helper_fines 
+                        WHERE order_id = %s AND status = 'unpaid'
+                    """, (order['id'],))
+                    
+                    existing_fine = cursor.fetchone()
+                    
+                    if not existing_fine:
+                        # Apply fine
+                        cursor.execute("""
+                            INSERT INTO helper_fines (helper_username, order_id, fine_amount, status, fine_reason)
+                            VALUES (%s, %s, %s, 'unpaid', %s)
+                        """, (order['helper_username'], order['id'], FINE_AMOUNT, 
+                              f'Order #{order["id"]} verification deadline expired without user action'))
+                        
+                        # Update subscription total_due for this helper
+                        cursor.execute("""
+                            UPDATE subscriptions 
+                            SET total_due = COALESCE(total_due, 0) + %s
+                            WHERE helper_username = %s AND status = 'active'
+                        """, (FINE_AMOUNT, order['helper_username']))
+                        
+                        # Mark order as expired
+                        cursor.execute("""
+                            UPDATE orders 
+                            SET user_action = 'expired',
+                                verification_deadline = NULL
+                            WHERE id = %s
+                        """, (order['id'],))
+                        
+                        # Notify helper about fine
+                        if order['verification_helper_id']:
+                            # Get system/admin user ID for from_user_id (use owner_id or a default)
+                            cursor.execute("SELECT owner_id FROM orders WHERE id = %s", (order['id'],))
+                            owner_result = cursor.fetchone()
+                            from_user_id = owner_result['owner_id'] if owner_result else order['verification_helper_id']
+                            
+                            cursor.execute("""
+                                INSERT INTO notifications (to_user_id, from_user_id, order_id, message, created_at, is_read)
+                                VALUES (%s, %s, %s, %s, NOW(), FALSE)
+                            """, (order['verification_helper_id'], from_user_id, order['id'], 
+                                  f'⚠️ ₹{FINE_AMOUNT} fine applied for Order #{order["id"]} - Deadline expired without user action'))
+                            
+                            # Push notification
+                            cursor.execute("SELECT fcm_token FROM users WHERE id = %s", (order['verification_helper_id'],))
+                            token_row = cursor.fetchone()
+                            if token_row and token_row.get('fcm_token'):
+                                send_push_notification(
+                                    token_row['fcm_token'],
+                                    "Fine Applied",
+                                    f'₹{FINE_AMOUNT} fine applied for Order #{order["id"]}'
+                                )
+                
+                conn.commit()
+                
+        except Exception as e:
+            print(f"Error in check_expired_verifications: {e}")
+            import traceback
+            traceback.print_exc()
+        
+        # Run every 5 minutes
+        time.sleep(300)
+
+# Start background job in a separate thread
+def start_background_jobs():
+    """Start background jobs"""
+    background_thread = threading.Thread(target=check_expired_verifications, daemon=True)
+    background_thread.start()
+    print("Background job started: Checking expired verifications")
+
 if __name__ == '__main__':
     init_db()
+    start_background_jobs()
     app.run(debug=True)
