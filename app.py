@@ -101,6 +101,31 @@ def get_db_connection():
     conn.autocommit = True
     return conn
 
+def ensure_notifications_schema():
+    """Ensure notifications table has required columns (type, link)"""
+    try:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            # Check and add type column
+            cursor.execute("""
+                SELECT column_name 
+                FROM information_schema.columns 
+                WHERE table_name='notifications' AND column_name='type'
+            """)
+            if not cursor.fetchone():
+                cursor.execute("ALTER TABLE notifications ADD COLUMN type TEXT")
+            # Check and add link column
+            cursor.execute("""
+                SELECT column_name 
+                FROM information_schema.columns 
+                WHERE table_name='notifications' AND column_name='link'
+            """)
+            if not cursor.fetchone():
+                cursor.execute("ALTER TABLE notifications ADD COLUMN link TEXT")
+            conn.commit()
+    except Exception as e:
+        print(f"Schema check error (may be harmless): {e}")
+
 
 # Initialize Firebase Admin SDK
 cred = credentials.Certificate("firebase-service-account-key.json")
@@ -245,6 +270,75 @@ def init_db():
             )
         ''')
         
+        # Create notifications table if it doesn't exist
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS notifications (
+                id SERIAL PRIMARY KEY,
+                from_user_id INTEGER,
+                to_user_id INTEGER,
+                order_id INTEGER,
+                message TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                is_read BOOLEAN DEFAULT FALSE,
+                type TEXT,
+                link TEXT
+            )
+        ''')
+        
+        # Add type column if it doesn't exist (for existing databases)
+        try:
+            cursor.execute("""
+                DO $$ 
+                BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.columns 
+                        WHERE table_name='notifications' AND column_name='type'
+                    ) THEN
+                        ALTER TABLE notifications ADD COLUMN type TEXT;
+                    END IF;
+                END $$;
+            """)
+        except Exception as e:
+            # Fallback: try direct ALTER if DO block fails (older PostgreSQL)
+            try:
+                cursor.execute("ALTER TABLE notifications ADD COLUMN type TEXT")
+            except Exception:
+                pass
+        
+        # Add link column if it doesn't exist (for existing databases)
+        try:
+            cursor.execute("""
+                DO $$ 
+                BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.columns 
+                        WHERE table_name='notifications' AND column_name='link'
+                    ) THEN
+                        ALTER TABLE notifications ADD COLUMN link TEXT;
+                    END IF;
+                END $$;
+            """)
+        except Exception as e:
+            # Fallback: try direct ALTER if DO block fails (older PostgreSQL)
+            try:
+                cursor.execute("ALTER TABLE notifications ADD COLUMN link TEXT")
+            except Exception:
+                pass
+        
+        # Create order_negotiations table for tracking negotiation history
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS order_negotiations (
+                id SERIAL PRIMARY KEY,
+                order_id INTEGER NOT NULL,
+                sender_id INTEGER NOT NULL,
+                receiver_id INTEGER NOT NULL,
+                price NUMERIC,
+                action TEXT,
+                message TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
         # Add order verification status and progress tracking columns
         try:
             cursor.execute("ALTER TABLE orders ADD COLUMN IF NOT EXISTS is_verified BOOLEAN DEFAULT FALSE")
@@ -253,6 +347,18 @@ def init_db():
             cursor.execute("ALTER TABLE orders ADD COLUMN IF NOT EXISTS user_action TEXT")
             cursor.execute("ALTER TABLE orders ADD COLUMN IF NOT EXISTS user_action_at TIMESTAMP")
             cursor.execute("ALTER TABLE orders ADD COLUMN IF NOT EXISTS verification_helper_id INTEGER")
+            # Booking/Nego fields
+            cursor.execute("ALTER TABLE orders ADD COLUMN IF NOT EXISTS user_id INTEGER")
+            cursor.execute("ALTER TABLE orders ADD COLUMN IF NOT EXISTS helper_id INTEGER")
+            cursor.execute("ALTER TABLE orders ADD COLUMN IF NOT EXISTS about TEXT")
+            cursor.execute("ALTER TABLE orders ADD COLUMN IF NOT EXISTS image_url TEXT")
+            cursor.execute("ALTER TABLE orders ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'pending'")
+            cursor.execute("ALTER TABLE orders ADD COLUMN IF NOT EXISTS price NUMERIC")
+            cursor.execute("ALTER TABLE orders ADD COLUMN IF NOT EXISTS otp TEXT")
+            cursor.execute("ALTER TABLE orders ADD COLUMN IF NOT EXISTS otp_expires_at TIMESTAMP")
+            cursor.execute("ALTER TABLE orders ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+            cursor.execute("ALTER TABLE orders ADD COLUMN IF NOT EXISTS is_direct_booking BOOLEAN DEFAULT FALSE")
+            cursor.execute("ALTER TABLE orders ADD COLUMN IF NOT EXISTS otp_attempts INTEGER DEFAULT 0")
         except Exception:
             pass
         
@@ -1028,6 +1134,375 @@ def edit_profile():
 
     return render_template('edit_profile.html', user=user)
 
+@app.route("/book_helper/<int:helper_id>", methods=["POST"])
+@login_required
+def book_helper(helper_id):
+    conn = get_db_connection()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+    try:
+        # --- 1️⃣ Ensure user_id exists in session ---
+        user_id = session.get("user_id")
+        if not user_id:
+            cursor.execute("SELECT id FROM users WHERE username = %s", (session["username"],))
+            user = cursor.fetchone()
+            if not user:
+                return jsonify({"success": False, "message": "User not found"}), 404
+            user_id = user["id"]
+
+        # --- 2️⃣ Collect form data ---
+        about = request.form.get("message", "").strip()  # "About the order" field
+        price = request.form.get("price", "").strip()
+        photo = request.files.get("photo")
+
+        if not about or not price:
+            return jsonify({"success": False, "message": "Order description and price are required"}), 400
+
+        try:
+            price = float(price)
+            if price <= 0:
+                return jsonify({"success": False, "message": "Price must be greater than 0"}), 400
+        except ValueError:
+            return jsonify({"success": False, "message": "Invalid price format"}), 400
+
+        # --- 3️⃣ Check for duplicate pending bookings ---
+        cursor.execute("""
+            SELECT id FROM orders 
+            WHERE user_id = %s AND helper_id = %s AND status = 'pending' AND is_direct_booking = TRUE
+        """, (user_id, helper_id))
+        existing = cursor.fetchone()
+        if existing:
+            return jsonify({"success": False, "message": "You already have a pending booking with this helper"}), 400
+
+        # --- 4️⃣ Check helper subscription ---
+        cursor.execute("""
+            SELECT id, username, account_type, location, business_type FROM users WHERE id = %s
+        """, (helper_id,))
+        helper = cursor.fetchone()
+        if not helper:
+            return jsonify({"success": False, "message": "Helper not found"}), 404
+
+        if helper["account_type"] != "business":
+            return jsonify({"success": False, "message": "This user is not a helper"}), 400
+
+        # Check if helper has active subscription
+        cursor.execute("""
+            SELECT 1 FROM subscriptions 
+            WHERE helper_username = %s 
+                AND category = %s 
+                AND status = 'active' 
+                AND end_date >= CURRENT_DATE
+        """, (helper["username"], helper["business_type"]))
+        has_subscription = cursor.fetchone()
+        
+        if not has_subscription:
+            return jsonify({"success": False, "message": "Helper not available right now."}), 400
+
+        # --- 5️⃣ Handle optional image upload ---
+        image_url = None
+        if photo and photo.filename:
+            filename = secure_filename(photo.filename)
+            upload_dir = os.path.join("static", "uploads")
+            os.makedirs(upload_dir, exist_ok=True)
+            # Add timestamp to avoid conflicts
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"{timestamp}_{filename}"
+            save_path = os.path.join(upload_dir, filename)
+            photo.save(save_path)
+            image_url = f"/{save_path.replace(os.sep, '/')}"
+
+        # --- 6️⃣ Get related service/location IDs (optional for direct bookings) ---
+        cursor.execute(
+            "SELECT id FROM services WHERE service_name = %s LIMIT 1",
+            (helper["business_type"],),
+        )
+        service = cursor.fetchone()
+        service_id = service["id"] if service else None
+
+        cursor.execute(
+            "SELECT id FROM locations WHERE location_name = %s LIMIT 1",
+            (helper["location"],),
+        )
+        loc = cursor.fetchone()
+        location_id = loc["id"] if loc else None
+
+        # --- 7️⃣ Insert order ---
+        cursor.execute(
+            """
+            INSERT INTO orders (
+                user_id, helper_id, about, image_url,
+                price, status, is_direct_booking, service_id, location_id, created_at
+            )
+            VALUES (%s, %s, %s, %s, %s, 'pending', TRUE, %s, %s, NOW())
+            RETURNING id
+            """,
+            (user_id, helper_id, about, image_url, price, service_id, location_id),
+        )
+        order_id = cursor.fetchone()["id"]
+
+        # --- 8️⃣ Store negotiation history ---
+        cursor.execute("""
+            INSERT INTO order_negotiations (order_id, sender_id, receiver_id, price, action, message)
+            VALUES (%s, %s, %s, %s, 'initial_offer', %s)
+        """, (order_id, user_id, helper_id, price, about))
+
+        # --- 9️⃣ Ensure schema is up to date ---
+        ensure_notifications_schema()
+        
+        # --- 🔟 Insert notification with booking details ---
+        notification_message = f"📋 New booking request from {session['username']}\n\nPrice offered: ₹{price}\nOrder details: {about[:100]}{'...' if len(about) > 100 else ''}"
+        cursor.execute(
+            """
+            INSERT INTO notifications (from_user_id, to_user_id, order_id, message, type, created_at, is_read)
+            VALUES (%s, %s, %s, %s, 'booking_request', NOW(), FALSE)
+            """,
+            (user_id, helper_id, order_id, notification_message),
+        )
+
+        conn.commit()
+        return jsonify({"success": True, "message": "Booking request sent successfully."})
+
+    except Exception as e:
+        conn.rollback()
+        import traceback
+        print("Error in /book_helper:", e)
+        traceback.print_exc()
+        return jsonify({"success": False, "message": "Server error: " + str(e)}), 500
+
+    finally:
+        cursor.close()
+        conn.close()
+
+@app.route("/helper_response/<int:order_id>", methods=["POST"])
+@login_required
+def helper_response(order_id):
+    try:
+        data = request.get_json()
+        action = data.get("action")
+        price = data.get("price")
+
+        # --- 1️⃣ Get user ID safely ---
+        user_id = session.get("user_id")
+        if not user_id:
+            conn = get_db_connection()
+            cur = conn.cursor(cursor_factory=RealDictCursor)
+            cur.execute("SELECT id FROM users WHERE username = %s", (session["username"],))
+            user = cur.fetchone()
+            cur.close()
+            conn.close()
+            if not user:
+                return jsonify({"success": False, "message": "User not found."}), 404
+            user_id = user["id"]
+
+        username = session["username"]
+
+        # --- 2️⃣ DB Operations ---
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+        # Fetch order info safely
+        cursor.execute("""
+            SELECT id, user_id, owner_user_id, owner_id, helper_id, status, is_direct_booking, price as current_price
+            FROM orders
+            WHERE id = %s
+        """, (order_id,))
+        order = cursor.fetchone()
+
+        if not order:
+            cursor.close()
+            conn.close()
+            return jsonify({"success": False, "message": "Order not found."}), 404
+
+        # Determine if this is a direct booking
+        is_direct = order.get("is_direct_booking", False)
+        
+        # For direct bookings, determine who is responding
+        if is_direct:
+            order_user_id = order.get("user_id")
+            order_helper_id = order.get("helper_id")
+            
+            # Check if current user is the helper or the customer
+            if user_id == order_helper_id:
+                # Helper is responding
+                responder_type = "helper"
+                to_user_id = order_user_id
+                cursor.execute("SELECT username FROM users WHERE id = %s", (order_user_id,))
+                to_user = cursor.fetchone()
+                to_username = to_user["username"] if to_user else "User"
+            elif user_id == order_user_id:
+                # Customer is responding (to a counter offer)
+                responder_type = "customer"
+                to_user_id = order_helper_id
+                cursor.execute("SELECT username FROM users WHERE id = %s", (order_helper_id,))
+                to_user = cursor.fetchone()
+                to_username = to_user["username"] if to_user else "Helper"
+            else:
+                cursor.close()
+                conn.close()
+                return jsonify({"success": False, "message": "You are not authorized to respond to this order."}), 403
+        else:
+            # Legacy order flow
+            to_user_id = order.get("user_id") or order.get("owner_user_id") or order.get("owner_id")
+            if not to_user_id:
+                cursor.close()
+                conn.close()
+                return jsonify({"success": False, "message": "Could not determine customer ID."}), 400
+            responder_type = "helper"
+            cursor.execute("SELECT username FROM users WHERE id = %s", (to_user_id,))
+            to_user = cursor.fetchone()
+            to_username = to_user["username"] if to_user else "User"
+
+        # --- 3️⃣ Handle Action ---
+        if action == "accept":
+            if is_direct and order.get("status") not in ["pending", "counter"]:
+                cursor.close()
+                conn.close()
+                return jsonify({"success": False, "message": "Order is not in a negotiable state."}), 400
+            
+            cursor.execute("""
+                UPDATE orders
+                SET status = 'accepted', helper_id = %s
+                WHERE id = %s
+            """, (order.get("helper_id") or user_id, order_id))
+            
+            if responder_type == "helper":
+                message = f"✅ {username} accepted your booking offer."
+            else:
+                message = f"✅ {username} accepted your counter offer."
+                
+            # Store in negotiation history
+            cursor.execute("""
+                INSERT INTO order_negotiations (order_id, sender_id, receiver_id, price, action, message)
+                VALUES (%s, %s, %s, %s, 'accept', 'Order accepted')
+            """, (order_id, user_id, to_user_id, order.get("current_price")))
+
+        elif action == "reject":
+            cursor.execute("""
+                UPDATE orders
+                SET status = 'rejected'
+                WHERE id = %s
+            """, (order_id,))
+            
+            if responder_type == "helper":
+                message = f"❌ {username} rejected your booking request."
+            else:
+                message = f"❌ {username} rejected your counter offer."
+            
+            # Store in negotiation history
+            cursor.execute("""
+                INSERT INTO order_negotiations (order_id, sender_id, receiver_id, price, action, message)
+                VALUES (%s, %s, %s, %s, 'reject', 'Order rejected')
+            """, (order_id, user_id, to_user_id, order.get("current_price")))
+
+        elif action == "counter":
+            if not price:
+                cursor.close()
+                conn.close()
+                return jsonify({"success": False, "message": "Price required for counter offer."}), 400
+            
+            try:
+                price = float(price)
+                if price <= 0:
+                    cursor.close()
+                    conn.close()
+                    return jsonify({"success": False, "message": "Price must be greater than 0."}), 400
+            except ValueError:
+                cursor.close()
+                conn.close()
+                return jsonify({"success": False, "message": "Invalid price format."}), 400
+            
+            # Update order with new price and set status to counter
+            cursor.execute("""
+                UPDATE orders
+                SET price = %s, status = 'counter'
+                WHERE id = %s
+            """, (price, order_id))
+            
+            if responder_type == "helper":
+                message = f"💬 {username} requested another price: ₹{price}"
+            else:
+                message = f"💬 {username} counter-offered with price: ₹{price}"
+            
+            # Store in negotiation history
+            cursor.execute("""
+                INSERT INTO order_negotiations (order_id, sender_id, receiver_id, price, action, message)
+                VALUES (%s, %s, %s, %s, 'counter', %s)
+            """, (order_id, user_id, to_user_id, price, f"Counter offer: ₹{price}"))
+
+        else:
+            cursor.close()
+            conn.close()
+            return jsonify({"success": False, "message": "Invalid action."}), 400
+
+        # --- 4️⃣ Ensure schema and Insert Notification ---
+        ensure_notifications_schema()
+        cursor.execute("""
+            INSERT INTO notifications (from_user_id, to_user_id, order_id, message, type, created_at, is_read)
+            VALUES (%s, %s, %s, %s, 'booking_response', NOW(), FALSE)
+        """, (user_id, to_user_id, order_id, message))
+
+        conn.commit()
+        cursor.close()
+        conn.close()
+
+        return jsonify({"success": True, "message": "Action completed successfully."})
+
+    except Exception as e:
+        import traceback
+        print("Error in /helper_response:", e)
+        traceback.print_exc()
+        return jsonify({"success": False, "message": "Server error."}), 500
+
+@app.route('/user_response/<int:order_id>', methods=['POST'])
+@login_required
+def user_response(order_id):
+    """User responds to helper's counter offer (Accept / Reject)"""
+    data = request.get_json()
+    action = data.get('action')
+
+    with get_db_connection() as conn:
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+        # Fetch order info
+        cursor.execute("SELECT owner_id, helper_id FROM orders WHERE id = %s", (order_id,))
+        order = cursor.fetchone()
+        if not order:
+            return jsonify({'success': False, 'message': 'Order not found'}), 404
+
+        cursor.execute("SELECT id FROM users WHERE username = %s", (session['username'],))
+        user_row = cursor.fetchone()
+        if not user_row or order['owner_id'] != user_row['id']:
+            return jsonify({'success': False, 'message': 'Unauthorized'}), 403
+
+        helper_id = order['helper_id']
+        owner_id = order['owner_id']
+
+        if action == 'accept':
+            cursor.execute("UPDATE orders SET status = 'accepted' WHERE id = %s", (order_id,))
+            msg = f"✅ {session['username']} accepted your offer!"
+        elif action == 'reject':
+            cursor.execute("UPDATE orders SET status = 'rejected' WHERE id = %s", (order_id,))
+            msg = f"❌ {session['username']} rejected your offer."
+        else:
+            return jsonify({'success': False, 'message': 'Invalid action'}), 400
+
+        # Notify helper
+        cursor.execute("""
+            INSERT INTO notifications (to_user_id, from_user_id, order_id, message, created_at, is_read)
+            VALUES (%s, %s, %s, %s, NOW(), FALSE)
+        """, (helper_id, owner_id, order_id, msg))
+
+        # Push notification
+        cursor.execute("SELECT fcm_token FROM users WHERE id = %s", (helper_id,))
+        token = cursor.fetchone()
+        if token and token.get('fcm_token'):
+            send_push_notification(token['fcm_token'], "Booking Response", msg)
+
+        conn.commit()
+        cursor.close()
+
+    return jsonify({'success': True, 'message': f'Order {action}ed successfully!'})
+
 # ---------------------------
 # Admin: Orders Overview
 # ---------------------------
@@ -1489,80 +1964,90 @@ def request_order_with_amount(order_id):
     """Handle order request with amount from helper"""
     if 'username' not in session:
         return jsonify({'success': False, 'message': 'Not logged in'}), 401
-    
+
     data = request.get_json()
     amount = data.get('amount')
-    
+
     if not amount or float(amount) <= 0:
         return jsonify({'success': False, 'message': 'Please enter a valid amount'}), 400
-    
+
     helper_username = session['username']
-    
+
     with get_db_connection() as conn:
-        cur = conn.cursor()
-        
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
         # Verify user is a helper
-        cur.execute("SELECT account_type FROM users WHERE username = %s", (helper_username,))
+        cur.execute("SELECT id, account_type FROM users WHERE username = %s", (helper_username,))
         user = cur.fetchone()
-        
-        if not user or user[0] != 'business':
+        if not user or user['account_type'] != 'business':
             return jsonify({'success': False, 'message': 'Only helpers can request orders'}), 403
-        
+
+        helper_id = user['id']
+
         # Check if already requested this order
         cur.execute("SELECT id FROM order_requests WHERE order_id = %s AND helper_username = %s", (order_id, helper_username))
         if cur.fetchone():
             return jsonify({'success': False, 'message': 'You have already submitted an offer for this order'}), 400
-        
-        # Get order details and owner_id
-        cur.execute("SELECT owner_id FROM orders WHERE id = %s", (order_id,))
+
+        # Get order owner for both legacy (owner_id) and direct (user_id)
+        cur.execute("""
+            SELECT COALESCE(user_id, owner_id) AS owner_id
+            FROM orders
+            WHERE id = %s
+        """, (order_id,))
         order_result = cur.fetchone()
-        if not order_result:
+        if not order_result or not order_result['owner_id']:
             return jsonify({'success': False, 'message': 'Order not found'}), 404
-        
-        owner_id = order_result[0]
-        
+
+        owner_id = order_result['owner_id']
+
         # Insert order request with amount
         cur.execute("""
             INSERT INTO order_requests (order_id, helper_username, amount, status)
             VALUES (%s, %s, %s, 'pending')
         """, (order_id, helper_username, amount))
 
-        # Ensure a corresponding row exists in order_acceptance for this helper
-        cur.execute("SELECT id FROM users WHERE username = %s", (helper_username,))
-        helper_id_row = cur.fetchone()
-        if helper_id_row:
-            helper_id = helper_id_row[0] if not isinstance(helper_id_row, dict) else helper_id_row.get('id')
+        # Ensure a corresponding row exists in order_acceptance
+        cur.execute("""
+            SELECT 1 FROM order_acceptance WHERE order_id = %s AND provider_id = %s
+        """, (order_id, helper_id))
+        if not cur.fetchone():
             cur.execute("""
-                SELECT 1 FROM order_acceptance WHERE order_id = %s AND provider_id = %s
+                INSERT INTO order_acceptance (order_id, provider_id, accepted)
+                VALUES (%s, %s, FALSE)
             """, (order_id, helper_id))
-            if not cur.fetchone():
-                cur.execute("""
-                    INSERT INTO order_acceptance (order_id, provider_id, accepted)
-                    VALUES (%s, %s, FALSE)
-                """, (order_id, helper_id))
-        
-        # Get helper ID for notification
-        cur.execute("SELECT id FROM users WHERE username = %s", (helper_username,))
-        helper_id = cur.fetchone()[0]
-        
-        # Create notification for the user
-        cur.execute(""" 
-            INSERT INTO notifications (to_user_id, from_user_id, order_id, message, created_at, is_read)
-            VALUES (%s, %s, %s, %s, NOW(), FALSE)
-        """, (owner_id, helper_id, order_id, f"{helper_username} submitted an offer of ₹{amount} for your order"))
-        
-        # Send push notification
+
+        # Create notification for the user (order owner) with link to view offers
+        ensure_notifications_schema()
+        message = f"{helper_username} submitted an offer of ₹{amount} for your order"
+        offer_link = url_for('view_offers', order_id=order_id)
+        try:
+            cur.execute("""
+                INSERT INTO notifications (to_user_id, from_user_id, order_id, message, link, type, created_at, is_read)
+                VALUES (%s, %s, %s, %s, %s, %s, NOW(), FALSE)
+            """, (owner_id, helper_id, order_id, message, offer_link, 'offer_received'))
+        except Exception:
+            # Fallback if link/type columns are missing
+            cur.execute("""
+                INSERT INTO notifications (to_user_id, from_user_id, order_id, message, created_at, is_read)
+                VALUES (%s, %s, %s, %s, NOW(), FALSE)
+            """, (owner_id, helper_id, order_id, message))
+
+        # Send push notification if available
         cur.execute("SELECT fcm_token FROM users WHERE id = %s", (owner_id,))
         token_result = cur.fetchone()
-        if token_result and token_result[0]:
-            send_push_notification(
-                token_result[0], 
-                "New Offer Received", 
-                f"{helper_username} offered ₹{amount} for your order"
-            )
-        
+        if token_result and token_result.get('fcm_token'):
+            try:
+                send_push_notification(
+                    token_result['fcm_token'],
+                    "New Offer Received",
+                    f"{helper_username} offered ₹{amount} for your order"
+                )
+            except Exception:
+                pass
+
         conn.commit()
-    
+
     return jsonify({'success': True, 'message': 'Your offer has been sent successfully!'})
 
 @app.route('/notifications')
@@ -1573,42 +2058,58 @@ def notifications():
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=RealDictCursor)
 
-    cur.execute("""
-    SELECT 
-        n.id, 
-        u_from.username AS from_user, 
-        u_from.id AS from_user_id,
-        u_to.username AS to_user, 
-        n.order_id, 
-        s.service_name, 
-        l.location_name, 
-        o.message AS order_message, 
-        o.created_at AS order_created_at, 
-        n.message, 
-        n.created_at AS notif_created_at, 
-        n.is_read,
-        (
-            SELECT r.helper_username
-            FROM order_requests r
-            WHERE r.order_id = n.order_id AND r.status = 'accepted'
-            LIMIT 1
-        ) AS approved_provider,
-        (
-            SELECT username FROM users WHERE id = o.owner_id
-        ) AS owner_username,
-        (
-            SELECT phone FROM users WHERE id = o.owner_id
-        ) AS owner_phone,
-        (
-            SELECT COUNT(*) FROM order_requests
-            WHERE order_id = n.order_id AND helper_username = %s
-        ) AS has_requested
+    # Updated query (adds o.status and o.is_direct_booking, handles direct bookings)
+    cur.execute("""SELECT 
+    n.id, 
+    u_from.username AS from_user, 
+    u_from.id AS from_user_id,
+    u_to.username AS to_user, 
+    n.order_id, 
+    COALESCE(s.service_name, 
+        (SELECT business_type FROM users WHERE id = o.helper_id)) AS service_name, 
+    COALESCE(l.location_name,
+        (SELECT location FROM users WHERE id = o.helper_id)) AS location_name, 
+    COALESCE(o.message, o.about) AS order_message, 
+    o.created_at AS order_created_at, 
+    n.message, 
+    n.created_at AS notif_created_at, 
+    n.is_read,
+    COALESCE(o.is_direct_booking, FALSE) AS is_direct_booking,
+    o.status AS order_status,
+    o.price AS order_price,
+    o.about AS order_about,
+    o.image_url AS order_image_url,
+    (
+        SELECT r.helper_username
+        FROM order_requests r
+        WHERE r.order_id = n.order_id AND r.status = 'accepted'
+        LIMIT 1
+    ) AS approved_provider,
+    COALESCE(
+        (SELECT username FROM users WHERE id = o.owner_id),
+        (SELECT username FROM users WHERE id = o.user_id)
+    ) AS owner_username,
+    COALESCE(
+        (SELECT phone FROM users WHERE id = o.owner_id),
+        (SELECT phone FROM users WHERE id = o.user_id)
+    ) AS owner_phone,
+    (
+        SELECT username FROM users WHERE id = o.helper_id
+    ) AS helper_username,
+    (
+        SELECT username FROM users WHERE id = o.user_id
+    ) AS user_username,
+    (
+        SELECT COUNT(*) FROM order_requests
+        WHERE order_id = n.order_id AND helper_username = %s
+    ) AS has_requested
+
     FROM notifications n
     JOIN users u_from ON u_from.id = n.from_user_id
     JOIN users u_to   ON u_to.id   = n.to_user_id
     JOIN orders o     ON o.id = n.order_id
-    JOIN services s   ON s.id = o.service_id
-    JOIN locations l  ON l.id = o.location_id
+    LEFT JOIN services s   ON s.id = o.service_id
+    LEFT JOIN locations l  ON l.id = o.location_id
     WHERE n.to_user_id = (
         SELECT id FROM users WHERE username = %s
     )
@@ -1653,6 +2154,7 @@ def notifications():
                          subscription_plan_exists=subscription_plan_exists,
                          business_type=business_type)
 
+
 @app.route('/api/notifications')
 def api_notifications():
     if 'username' not in session:
@@ -1660,36 +2162,40 @@ def api_notifications():
 
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=RealDictCursor)
-    cur.execute("""
-    SELECT 
-        n.id, 
-        u_from.username AS from_user, 
-        u_from.id AS from_user_id,
-        u_to.username AS to_user, 
-        n.order_id, 
-        s.service_name, 
-        l.location_name, 
-        o.message AS order_message, 
-        o.created_at AS order_created_at, 
-        n.message, 
-        n.created_at AS notif_created_at, 
-        n.is_read,
-        (
-            SELECT r.helper_username
-            FROM order_requests r
-            WHERE r.order_id = n.order_id AND r.status = 'accepted'
-            LIMIT 1
-        ) AS approved_provider,
-        (
-            SELECT username FROM users WHERE id = o.owner_id
-        ) AS owner_username,
-        (
-            SELECT phone FROM users WHERE id = o.owner_id
-        ) AS owner_phone,
-        (
-            SELECT COUNT(*) FROM order_requests
-            WHERE order_id = n.order_id AND helper_username = %s
-        ) AS has_requested
+
+    # Same logic for API version
+    cur.execute("""SELECT 
+    n.id, 
+    u_from.username AS from_user, 
+    u_from.id AS from_user_id,
+    u_to.username AS to_user, 
+    n.order_id, 
+    s.service_name, 
+    l.location_name, 
+    o.message AS order_message, 
+    o.created_at AS order_created_at, 
+    n.message, 
+    n.created_at AS notif_created_at, 
+    n.is_read,
+    o.is_direct_booking,
+    o.status AS order_status,
+    (
+        SELECT r.helper_username
+        FROM order_requests r
+        WHERE r.order_id = n.order_id AND r.status = 'accepted'
+        LIMIT 1
+    ) AS approved_provider,
+    (
+        SELECT username FROM users WHERE id = o.owner_id
+    ) AS owner_username,
+    (
+        SELECT phone FROM users WHERE id = o.owner_id
+    ) AS owner_phone,
+    (
+        SELECT COUNT(*) FROM order_requests
+        WHERE order_id = n.order_id AND helper_username = %s
+    ) AS has_requested
+
     FROM notifications n
     JOIN users u_from ON u_from.id = n.from_user_id
     JOIN users u_to   ON u_to.id   = n.to_user_id
@@ -2076,22 +2582,39 @@ def order_details(order_id):
     with get_db_connection() as conn:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         
-        # Get order details with enhanced information
+        # Get order details with enhanced information (handles both direct bookings and legacy orders)
         cur.execute("""
             SELECT 
                 o.*,
-                s.service_name,
-                l.location_name,
-                u_owner.username as owner_username,
-                u_owner.phone as owner_phone,
-                u_owner.gmail as owner_email,
-                u_owner.location as owner_location,
+                COALESCE(s.service_name, 
+                    (SELECT business_type FROM users WHERE id = o.helper_id)) AS service_name,
+                COALESCE(l.location_name,
+                    (SELECT location FROM users WHERE id = o.helper_id)) AS location_name,
+                COALESCE(
+                    u_owner.username,
+                    (SELECT username FROM users WHERE id = o.user_id)
+                ) as owner_username,
+                COALESCE(
+                    u_owner.phone,
+                    (SELECT phone FROM users WHERE id = o.user_id)
+                ) as owner_phone,
+                COALESCE(
+                    u_owner.gmail,
+                    (SELECT gmail FROM users WHERE id = o.user_id)
+                ) as owner_email,
+                COALESCE(
+                    u_owner.location,
+                    (SELECT location FROM users WHERE id = o.user_id)
+                ) as owner_location,
                 oa.final_selected,
-                u_provider.username as approved_provider
+                u_provider.username as approved_provider,
+                (SELECT username FROM users WHERE id = o.user_id) as user_username,
+                (SELECT username FROM users WHERE id = o.helper_id) as helper_username,
+                COALESCE(o.is_direct_booking, FALSE) as is_direct_booking
             FROM orders o
-            JOIN services s ON s.id = o.service_id
-            JOIN locations l ON l.id = o.location_id
-            JOIN users u_owner ON u_owner.id = o.owner_id
+            LEFT JOIN services s ON s.id = o.service_id
+            LEFT JOIN locations l ON l.id = o.location_id
+            LEFT JOIN users u_owner ON u_owner.id = o.owner_id
             LEFT JOIN order_acceptance oa ON oa.order_id = o.id AND oa.final_selected = TRUE
             LEFT JOIN users u_provider ON u_provider.id = oa.provider_id
             WHERE o.id = %s
@@ -2116,6 +2639,22 @@ def order_details(order_id):
         cur.execute("SELECT id FROM users WHERE username = %s", (session['username'],))
         current_user = cur.fetchone()
         
+        # Check access for direct bookings
+        is_direct = order.get('is_direct_booking', False)
+        has_access = False
+        
+        if is_direct:
+            # For direct bookings: user_id is customer, helper_id is helper
+            user_id = order.get('user_id')
+            helper_id = order.get('helper_id')
+            if current_user['id'] == user_id or current_user['id'] == helper_id:
+                has_access = True
+        else:
+            # Legacy orders: owner_id is customer
+            owner_id = order.get('owner_id')
+            if current_user['id'] == owner_id:
+                has_access = True
+        
         # Also allow access if this user is the accepted helper via order_requests
         cur.execute("""
             SELECT 1 FROM order_requests 
@@ -2125,12 +2664,28 @@ def order_details(order_id):
         has_access_via_requests = cur.fetchone() is not None
         
         # User can access if they are the owner, approved provider (either source), or admin
-        if (order['owner_id'] != current_user['id'] and 
+        if (not has_access and
             order.get('approved_provider') != session['username'] and 
             not has_access_via_requests and
             session['username'] != 'adime'):
             flash("You don't have permission to view this order", "error")
             return redirect(url_for('notifications'))
+        
+        # Get negotiation history for direct bookings
+        negotiations = []
+        if is_direct:
+            cur.execute("""
+                SELECT 
+                    on_neg.*,
+                    u_sender.username as sender_username,
+                    u_receiver.username as receiver_username
+                FROM order_negotiations on_neg
+                JOIN users u_sender ON u_sender.id = on_neg.sender_id
+                JOIN users u_receiver ON u_receiver.id = on_neg.receiver_id
+                WHERE on_neg.order_id = %s
+                ORDER BY on_neg.created_at ASC
+            """, (order_id,))
+            negotiations = cur.fetchall()
         
         # Get basic order info (tracking not available yet)
         tracking = []
@@ -2162,7 +2717,8 @@ def order_details(order_id):
     return render_template('order_details.html', 
                          order=order, 
                          tracking=tracking, 
-                         accepted_providers=accepted_providers)
+                         accepted_providers=accepted_providers,
+                         negotiations=negotiations)
 
 @app.route('/update_order_status/<int:order_id>', methods=['POST'])
 def update_order_status(order_id):
@@ -2893,38 +3449,74 @@ def my_requests():
 @app.route('/generate_otp/<int:order_id>', methods=['POST'])
 @login_required
 def generate_otp(order_id):
-    """Generate OTP for order verification (Helper side)"""
+    """Generate OTP for order verification (Helper side) - Works for both direct bookings and legacy orders"""
     if 'username' not in session:
         return jsonify({'success': False, 'message': 'Not authenticated'}), 401
     
     with get_db_connection() as conn:
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         
-        # Verify helper is the approved provider for this order and get order details
+        # Get current user ID
+        cursor.execute("SELECT id FROM users WHERE username = %s", (session['username'],))
+        current_user = cursor.fetchone()
+        if not current_user:
+            return jsonify({'success': False, 'message': 'User not found'}), 404
+        current_user_id = current_user['id']
+        
+        # Get order details - check both direct bookings and legacy orders
         cursor.execute("""
-            SELECT o.id, o.owner_id, o.message as order_message,
-                   (SELECT id FROM users WHERE username = %s) as helper_id,
+            SELECT o.id, o.owner_id, o.user_id, o.helper_id, o.is_direct_booking, 
+                   o.status, o.message as order_message, o.about,
                    (SELECT username FROM users WHERE id = o.owner_id) as owner_username,
-                   (SELECT username FROM users WHERE username = %s) as helper_username,
+                   (SELECT username FROM users WHERE id = o.user_id) as user_username,
                    (SELECT service_name FROM services WHERE id = o.service_id) as service_name,
                    (SELECT location_name FROM locations WHERE id = o.location_id) as location_name
             FROM orders o
-            LEFT JOIN order_requests r ON r.order_id = o.id 
-                AND r.helper_username = %s AND r.status = 'accepted'
-            LEFT JOIN order_acceptance oa ON oa.order_id = o.id 
-                AND oa.provider_id = (SELECT id FROM users WHERE username = %s)
-                AND (oa.final_selected = TRUE OR oa.accepted = TRUE)
             WHERE o.id = %s
-            LIMIT 1
-        """, (session['username'], session['username'], session['username'], session['username'], order_id))
+        """, (order_id,))
         
         order_info = cursor.fetchone()
         
         if not order_info:
+            return jsonify({'success': False, 'message': 'Order not found'}), 404
+        
+        # Check if order is accepted
+        if order_info.get('status') != 'accepted':
+            return jsonify({'success': False, 'message': 'Order must be accepted before generating OTP'}), 400
+        
+        # Verify helper is authorized (for direct bookings, check helper_id; for legacy, check order_requests/order_acceptance)
+        is_direct = order_info.get('is_direct_booking', False)
+        is_authorized = False
+        owner_id = None
+        
+        if is_direct:
+            # Direct booking: check if current user is the helper
+            if order_info.get('helper_id') == current_user_id:
+                is_authorized = True
+                owner_id = order_info.get('user_id')  # For direct bookings, user_id is the customer
+        else:
+            # Legacy order: check order_requests or order_acceptance
+            owner_id = order_info.get('owner_id')
+            cursor.execute("""
+                SELECT 1 FROM order_requests 
+                WHERE order_id = %s AND helper_username = %s AND status = 'accepted'
+            """, (order_id, session['username']))
+            if cursor.fetchone():
+                is_authorized = True
+            else:
+                cursor.execute("""
+                    SELECT 1 FROM order_acceptance 
+                    WHERE order_id = %s AND provider_id = %s 
+                    AND (final_selected = TRUE OR accepted = TRUE)
+                """, (order_id, current_user_id))
+                if cursor.fetchone():
+                    is_authorized = True
+        
+        if not is_authorized or not owner_id:
             return jsonify({'success': False, 'message': 'Order not found or you are not the approved helper'}), 404
         
         # Check if already verified
-        cursor.execute("SELECT is_verified FROM orders WHERE id = %s", (order_id,))
+        cursor.execute("SELECT is_verified, status FROM orders WHERE id = %s", (order_id,))
         order_check = cursor.fetchone()
         if order_check and order_check.get('is_verified'):
             return jsonify({'success': False, 'message': 'Order already verified'}), 400
@@ -2935,48 +3527,57 @@ def generate_otp(order_id):
         # Set expiration (10 minutes)
         expires_at = datetime.now() + timedelta(minutes=10)
         
-        # Delete any existing OTPs for this order
+        # Reset OTP attempts and delete any existing OTPs for this order
         cursor.execute("DELETE FROM order_otps WHERE order_id = %s", (order_id,))
+        cursor.execute("UPDATE orders SET otp_attempts = 0 WHERE id = %s", (order_id,))
         
-        # Insert new OTP
+        # Store OTP in orders table (for direct bookings) and order_otps table (for compatibility)
+        cursor.execute("""
+            UPDATE orders 
+            SET otp = %s, otp_expires_at = %s
+            WHERE id = %s
+        """, (otp, expires_at, order_id))
+        
         cursor.execute("""
             INSERT INTO order_otps (order_id, otp, expires_at)
             VALUES (%s, %s, %s)
         """, (order_id, otp, expires_at))
         
-        # Notify the order owner about OTP with detailed information
-        owner_id = order_info['owner_id']
-        owner_username = order_info['owner_username']
+        # Get customer details
+        cursor.execute("SELECT username FROM users WHERE id = %s", (owner_id,))
+        customer = cursor.fetchone()
+        customer_username = customer['username'] if customer else 'Customer'
         helper_username = session['username']
-        service_name = order_info.get('service_name', 'Service')
-        location_name = order_info.get('location_name', 'Location')
-        order_message = order_info.get('order_message', '')
-        expires_time = expires_at.strftime("%I:%M %p")
+        
+        # Get order details text
+        order_details = order_info.get('about') or order_info.get('order_message') or 'No details provided'
+        service_name = order_info.get('service_name') or 'Service'
+        location_name = order_info.get('location_name') or 'Location'
+        expires_time = expires_at.strftime("%I:%M %p on %B %d, %Y")
         
         # Create detailed OTP notification message
-        otp_message = f"🔐 OTP for Order Verification\n\nOrder #: {order_id}\nOTP: {otp}\nValid Until: {expires_time}\n\nHelper: {helper_username}\nService: {service_name}\nLocation: {location_name}\n\nDetails: {order_message[:100]}{'...' if len(order_message) > 100 else ''}"
+        otp_message = f"🔐 OTP for Order Verification\n\nOrder #: {order_id}\nOTP: {otp}\nValid Until: {expires_time}\n\nHelper: {helper_username}\nService: {service_name}\nLocation: {location_name}\n\nDetails: {order_details[:100]}{'...' if len(order_details) > 100 else ''}"
         
+        # Ensure schema and notify the customer about OTP
+        ensure_notifications_schema()
         cursor.execute("""
-            INSERT INTO notifications (to_user_id, from_user_id, order_id, message, created_at, is_read)
-            VALUES (%s, %s, %s, %s, NOW(), FALSE)
-        """, (owner_id, order_info['helper_id'], order_id, otp_message))
+            INSERT INTO notifications (to_user_id, from_user_id, order_id, message, type, created_at, is_read)
+            VALUES (%s, %s, %s, %s, 'otp_notification', NOW(), FALSE)
+        """, (owner_id, current_user_id, order_id, otp_message))
         
-        # Send push notification to owner with concise message
-        push_title = f"🔐 OTP for Order #{order_id}"
-        push_body = f"OTP: {otp} | Valid until {expires_time} | Helper: {helper_username}"
-        
+        # Send push notification
         cursor.execute("SELECT fcm_token FROM users WHERE id = %s", (owner_id,))
         owner_token = cursor.fetchone()
         if owner_token and owner_token.get('fcm_token'):
             send_push_notification(
                 owner_token['fcm_token'],
-                push_title,
-                push_body
+                f"🔐 OTP for Order #{order_id}",
+                f"OTP: {otp} | Valid until {expires_time} | Helper: {helper_username}"
             )
         
         conn.commit()
         
-        return jsonify({'success': True, 'message': 'OTP generated and sent to the order owner'})
+        return jsonify({'success': True, 'message': 'OTP generated and sent to the customer', 'expires_at': expires_at.isoformat()})
 
 @app.route('/verify_otp/<int:order_id>', methods=['POST'])
 @login_required
@@ -2994,32 +3595,70 @@ def verify_otp(order_id):
     with get_db_connection() as conn:
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         
-        # Verify helper is the approved provider
+        # Get current user ID
+        cursor.execute("SELECT id FROM users WHERE username = %s", (session['username'],))
+        current_user = cursor.fetchone()
+        if not current_user:
+            return jsonify({'success': False, 'message': 'User not found'}), 404
+        current_user_id = current_user['id']
+        
+        # Verify helper is the approved provider (handles both direct bookings and legacy orders)
         cursor.execute("""
-            SELECT o.id, o.owner_id,
-                   (SELECT id FROM users WHERE username = %s) as helper_id,
-                   (SELECT username FROM users WHERE id = o.owner_id) as owner_username
+            SELECT o.id, o.owner_id, o.user_id, o.helper_id, o.is_direct_booking,
+                   (SELECT username FROM users WHERE id = COALESCE(o.owner_id, o.user_id)) as owner_username,
+                   (SELECT username FROM users WHERE id = o.helper_id) as helper_username
             FROM orders o
-            LEFT JOIN order_requests r ON r.order_id = o.id 
-                AND r.helper_username = %s AND r.status = 'accepted'
-            LEFT JOIN order_acceptance oa ON oa.order_id = o.id 
-                AND oa.provider_id = (SELECT id FROM users WHERE username = %s)
-                AND (oa.final_selected = TRUE OR oa.accepted = TRUE)
             WHERE o.id = %s
             LIMIT 1
-        """, (session['username'], session['username'], session['username'], order_id))
+        """, (order_id,))
         
         order_info = cursor.fetchone()
         
         if not order_info:
-            return jsonify({'success': False, 'message': 'Order not found or you are not the approved helper'}), 404
+            return jsonify({'success': False, 'message': 'Order not found'}), 404
+        
+        # Check if order is accepted
+        cursor.execute("SELECT status FROM orders WHERE id = %s", (order_id,))
+        order_status = cursor.fetchone()
+        if not order_status or order_status['status'] != 'accepted':
+            return jsonify({'success': False, 'message': 'Order must be accepted before verification'}), 400
+        
+        # Verify authorization: for direct bookings, check helper_id; for legacy, check order_requests/order_acceptance
+        is_direct = order_info.get('is_direct_booking', False)
+        is_authorized = False
+        
+        if is_direct:
+            # Direct booking: check if current user is the helper
+            if order_info.get('helper_id') == current_user_id:
+                is_authorized = True
+        else:
+            # Legacy order: check order_requests or order_acceptance
+            cursor.execute("""
+                SELECT 1 FROM order_requests 
+                WHERE order_id = %s AND helper_username = %s AND status = 'accepted'
+            """, (order_id, session['username']))
+            if cursor.fetchone():
+                is_authorized = True
+            else:
+                cursor.execute("""
+                    SELECT 1 FROM order_acceptance 
+                    WHERE order_id = %s AND provider_id = %s 
+                    AND (final_selected = TRUE OR accepted = TRUE)
+                """, (order_id, current_user_id))
+                if cursor.fetchone():
+                    is_authorized = True
+        
+        if not is_authorized:
+            return jsonify({'success': False, 'message': 'You are not authorized to verify this order'}), 403
+        
+        owner_id = order_info.get('owner_id') or order_info.get('user_id')
         
         # First, delete all expired OTPs (security: auto-cleanup expired OTPs)
         cursor.execute("DELETE FROM order_otps WHERE expires_at < NOW()")
         
-        # Get current OTP for this order
+        # Get current OTP for this order (check both order_otps table and orders table for direct bookings)
         cursor.execute("""
-            SELECT otp, expires_at, is_verified
+            SELECT otp, expires_at, is_verified, created_at
             FROM order_otps
             WHERE order_id = %s
             ORDER BY created_at DESC
@@ -3027,6 +3666,15 @@ def verify_otp(order_id):
         """, (order_id,))
         
         otp_record = cursor.fetchone()
+        
+        # If not found in order_otps, check orders table (for direct bookings)
+        if not otp_record:
+            cursor.execute("""
+                SELECT otp, otp_expires_at as expires_at, FALSE as is_verified, created_at
+                FROM orders
+                WHERE id = %s AND otp IS NOT NULL
+            """, (order_id,))
+            otp_record = cursor.fetchone()
         
         if not otp_record:
             return jsonify({'success': False, 'message': 'No OTP found for this order. Please generate one first.'}), 404
@@ -3042,9 +3690,25 @@ def verify_otp(order_id):
             conn.commit()
             return jsonify({'success': False, 'message': 'OTP has expired. Please generate a new one.'}), 400
         
+        # Check OTP attempts (limit to 3)
+        cursor.execute("SELECT otp_attempts FROM orders WHERE id = %s", (order_id,))
+        attempts_result = cursor.fetchone()
+        current_attempts = attempts_result['otp_attempts'] if attempts_result else 0
+        
+        if current_attempts >= 3:
+            return jsonify({'success': False, 'message': 'Maximum OTP attempts (3) exceeded. Please generate a new OTP.'}), 400
+        
         # Verify OTP
         if entered_otp != otp_record['otp']:
-            return jsonify({'success': False, 'message': 'Invalid OTP. Please try again.'}), 400
+            # Increment attempt counter
+            cursor.execute("""
+                UPDATE orders 
+                SET otp_attempts = COALESCE(otp_attempts, 0) + 1
+                WHERE id = %s
+            """, (order_id,))
+            conn.commit()
+            remaining = 3 - (current_attempts + 1)
+            return jsonify({'success': False, 'message': f'Invalid OTP. {remaining} attempt(s) remaining.'}), 400
         
         # OTP is correct - mark as verified and delete the OTP (security: one-time use)
         cursor.execute("""
@@ -3056,23 +3720,26 @@ def verify_otp(order_id):
         # Delete the OTP after successful verification for security
         cursor.execute("DELETE FROM order_otps WHERE order_id = %s", (order_id,))
         
-        # Mark order as verified and set verification deadline (24 hours)
+        # Mark order as verified and set status to 'in_progress', set verification deadline (24 hours)
         verification_deadline = datetime.now() + timedelta(hours=24)
-        helper_id = order_info['helper_id']
+        helper_id = order_info.get('helper_id') or current_user_id
         
         cursor.execute("""
             UPDATE orders 
             SET is_verified = TRUE, 
                 verified_at = NOW(),
                 verification_deadline = %s,
-                verification_helper_id = %s
+                verification_helper_id = %s,
+                status = 'in_progress',
+                otp = NULL,
+                otp_expires_at = NULL
             WHERE id = %s
         """, (verification_deadline, helper_id, order_id))
         
         # Notify both user and helper
-        owner_id = order_info['owner_id']
+        owner_id = order_info.get('owner_id') or order_info.get('user_id')
         verification_msg_user = f"✅ Order #{order_id} has been verified by helper. You have 24 hours to mark it as Completed, Processing, or Cancel."
-        verification_msg_helper = f"✅ Order #{order_id} verification successful! Waiting for user action."
+        verification_msg_helper = f"✅ Order #{order_id} verification successful! Order status changed to 'In Progress'."
         
         # Notify owner
         cursor.execute("""
@@ -3117,19 +3784,41 @@ def user_action(order_id):
     with get_db_connection() as conn:
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         
-        # Verify user owns this order
+        # Get current user ID
+        cursor.execute("SELECT id FROM users WHERE username = %s", (session['username'],))
+        current_user = cursor.fetchone()
+        if not current_user:
+            return jsonify({'success': False, 'message': 'User not found'}), 404
+        current_user_id = current_user['id']
+        
+        # Verify user owns this order (handles both direct bookings and legacy orders)
         cursor.execute("""
-            SELECT o.id, o.owner_id, o.is_verified, o.verification_helper_id,
-                   (SELECT id FROM users WHERE username = %s) as current_user_id,
-                   (SELECT username FROM users WHERE id = o.verification_helper_id) as helper_username
+            SELECT o.id, o.owner_id, o.user_id, o.helper_id, o.is_direct_booking, o.is_verified, o.verification_helper_id,
+                   (SELECT username FROM users WHERE id = COALESCE(o.verification_helper_id, o.helper_id)) as helper_username
             FROM orders o
-            WHERE o.id = %s AND o.owner_id = (SELECT id FROM users WHERE username = %s)
-        """, (session['username'], order_id, session['username']))
+            WHERE o.id = %s
+        """, (order_id,))
         
         order_info = cursor.fetchone()
         
         if not order_info:
-            return jsonify({'success': False, 'message': 'Order not found or you do not have permission'}), 404
+            return jsonify({'success': False, 'message': 'Order not found'}), 404
+        
+        # Check if user is authorized (for direct bookings: user_id; for legacy: owner_id)
+        is_direct = order_info.get('is_direct_booking', False)
+        is_authorized = False
+        
+        if is_direct:
+            # Direct booking: check if current user is the customer (user_id)
+            if order_info.get('user_id') == current_user_id:
+                is_authorized = True
+        else:
+            # Legacy order: check if current user is the owner (owner_id)
+            if order_info.get('owner_id') == current_user_id:
+                is_authorized = True
+        
+        if not is_authorized:
+            return jsonify({'success': False, 'message': 'Order not found or you do not have permission'}), 403
         
         if not order_info.get('is_verified'):
             return jsonify({'success': False, 'message': 'Order must be verified first before taking action'}), 400
@@ -3156,8 +3845,12 @@ def user_action(order_id):
             """, (action, order_id))
         
         # Notify helper
-        helper_id = order_info['verification_helper_id']
-        helper_username = order_info['helper_username']
+        helper_id = order_info.get('verification_helper_id')
+        helper_username = order_info.get('helper_username')
+        
+        # For direct bookings, get helper_id from order if verification_helper_id is not set
+        if not helper_id and is_direct:
+            helper_id = order_info.get('helper_id')
         
         action_messages = {
             'completed': f'✅ Order #{order_id} has been marked as Completed by the customer.',
@@ -3168,10 +3861,11 @@ def user_action(order_id):
         notification_msg = action_messages.get(action, f'Order #{order_id} action: {action}')
         
         if helper_id:
+            ensure_notifications_schema()
             cursor.execute("""
                 INSERT INTO notifications (to_user_id, from_user_id, order_id, message, created_at, is_read)
                 VALUES (%s, %s, %s, %s, NOW(), FALSE)
-            """, (helper_id, order_info['current_user_id'], order_id, notification_msg))
+            """, (helper_id, current_user_id, order_id, notification_msg))
             
             # Send push notification
             cursor.execute("SELECT fcm_token FROM users WHERE id = %s", (helper_id,))
