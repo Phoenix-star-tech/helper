@@ -1,0 +1,246 @@
+{% extends 'base.html' %}
+{% block title %}{{ business_type or 'Services' }} - Mr. Helper{% endblock %}
+{% block content %}
+
+<style>
+  /* Page Layout */
+  body { background: #f9fafb; font-family: 'Inter', sans-serif; color: #111827; }
+  .page-wrapper { max-width: 1200px; margin: auto; padding: 20px; }
+
+  /* Header */
+  .svc-header {
+    display: flex; justify-content: space-between; align-items: flex-end;
+    margin-bottom: 15px; flex-wrap: wrap; gap: 12px;
+  }
+  .svc-title { font-size: 1.8rem; font-weight: 800; color: #111827; }
+  .svc-sub { font-size: 0.95rem; color: #6b7280; }
+  .back-btn {
+    padding: 8px 16px; background: #2563eb; color: white; border-radius: 10px;
+    text-decoration: none; transition: 0.2s;
+  }
+  .back-btn:hover { background: #1e40af; }
+
+  /* Service Chips */
+  .svc-types {
+    display: flex; gap: 12px; overflow-x: auto; padding: 10px 2px;
+    scrollbar-width: none;
+  }
+  .svc-types::-webkit-scrollbar { display: none; }
+  .svc-chip {
+    display: flex; flex-direction: column; align-items: center; text-align: center;
+    color: #374151; text-decoration: none; transition: 0.2s;
+  }
+  .svc-chip-inner {
+    width: 64px; height: 64px; background: rgba(37,99,235,0.05); border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    border: 2px solid transparent; transition: 0.2s ease;
+  }
+  .svc-chip:hover .svc-chip-inner { border-color: #2563eb; transform: scale(1.05); }
+  .svc-chip.selected .svc-chip-inner { border-color: #2563eb; background: rgba(37,99,235,0.1); }
+  .svc-chip-label { font-size: 0.85rem; margin-top: 6px; font-weight: 500; }
+
+  /* Filters */
+  .filters-wrap {
+    background: white; border-radius: 12px; padding: 16px; margin: 15px 0 25px;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+  }
+  .filters {
+    display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  }
+  select, input {
+    width: 100%; padding: 10px 12px; border: 1px solid #e5e7eb;
+    border-radius: 10px; font-size: 0.9rem; outline: none;
+  }
+  .btn-clear {
+    background: #f3f4f6; border: none; padding: 10px; border-radius: 10px;
+    cursor: pointer; transition: 0.2s;
+  }
+  .btn-clear:hover { background: #e5e7eb; }
+
+  /* Helper Cards */
+  .helper-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 20px;
+  }
+  .card {
+    background: white; border-radius: 16px; padding: 16px;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.06); transition: 0.2s ease;
+    display: flex; gap: 12px; align-items: center;
+  }
+  .card:hover { transform: translateY(-3px); box-shadow: 0 12px 24px rgba(0,0,0,0.08); }
+  .avatar {
+    width: 72px; height: 72px; border-radius: 14px; object-fit: cover;
+    background: #f3f4f6;
+  }
+  .card h4 { font-size: 1.05rem; font-weight: 700; margin: 0; }
+  .meta { color: #6b7280; font-size: 0.9rem; }
+  .rating { color: #f59e0b; font-weight: 700; }
+  .pill {
+    background: #eff6ff; color: #2563eb; font-weight: 600;
+    border-radius: 9999px; padding: 4px 8px; font-size: 0.75rem;
+    margin-left: 8px;
+  }
+  .view-btn {
+    margin-top: 8px; display: inline-block; background: #2563eb; color: white;
+    padding: 8px 14px; border-radius: 8px; text-decoration: none; font-size: 0.85rem;
+    transition: 0.2s;
+  }
+  .view-btn:hover { background: #1e3a8a; }
+  .empty { text-align: center; color: #6b7280; font-size: 1rem; padding: 30px 0; }
+
+  /* Animation */
+  .fade { animation: fadeIn 0.3s ease; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(4px);} to { opacity: 1; transform: none; } }
+</style>
+
+<div class="page-wrapper">
+  <div class="svc-header">
+    <div>
+      <div class="svc-title">{{ business_type }}</div>
+      <div class="svc-sub">Find trusted helpers for {{ business_type }} near you</div>
+    </div>
+    <a href="{{ url_for('home') }}" class="back-btn">← Back</a>
+  </div>
+  <input type="hidden" id="bt" value="{{ business_type }}">
+
+  <!-- Service Circles -->
+  <div id="serviceTypes" class="svc-types">
+    {% for st in service_types %}
+      <a href="#" class="svc-chip" data-service="{{ st.id or st.name }}">
+        <div class="svc-chip-inner">
+          {% if st.icon %}
+            <img src="{{ st.icon }}" alt="{{ st.name }}" style="width:40px;height:40px;object-fit:contain;">
+          {% else %}
+            <span>🛠️</span>
+          {% endif %}
+        </div>
+        <div class="svc-chip-label">{{ st.name }}</div>
+      </a>
+    {% endfor %}
+  </div>
+
+  <!-- Filters -->
+  <div class="filters-wrap">
+    <div class="filters">
+      <select id="filterLocation"><option value="">All Locations</option>
+        {% for loc in locations %}<option value="{{ loc }}">{{ loc }}</option>{% endfor %}
+      </select>
+
+      <select id="filterRating">
+        <option value="">Any Rating</option>
+        <option value="4.5">4.5+ stars</option>
+        <option value="4">4+ stars</option>
+        <option value="3">3+ stars</option>
+      </select>
+
+      <input id="priceMin" type="number" min="0" placeholder="Min ₹">
+      <input id="priceMax" type="number" min="0" placeholder="Max ₹">
+      <button id="clearFilters" class="btn-clear">Clear Filters</button>
+    </div>
+  </div>
+
+  <!-- Helpers -->
+  <div id="helpers" class="helper-grid">
+    {% for h in helpers %}
+      <div class="card fade">
+        <img class="avatar" src="{{ h.profile_pic or url_for('static', filename='assets/default_profile.jpg') }}">
+        <div>
+          <h4>{{ h.username }}</h4>
+          <div class="meta">{{ h.service_type or business_type }} • {{ h.location }}
+            {% if h.price %}<span class="pill">₹{{ h.price }}</span>{% endif %}
+          </div>
+          <div class="meta rating">★ {{ '%.1f'|format(h.avg_rating or 0) }}</div>
+          <a href="{{ url_for('profile', username=h.username) }}" class="view-btn">View Profile</a>
+        </div>
+      </div>
+    {% endfor %}
+    {% if not helpers %}
+      <div class="empty">No helpers found.</div>
+    {% endif %}
+  </div>
+</div>
+
+<script>
+  const bt = document.getElementById('bt').value;
+  let selectedService = '';
+
+  function renderHelpers(list) {
+    const el = document.getElementById('helpers');
+    el.classList.remove('fade');
+    if (!list || list.length === 0) {
+      el.innerHTML = '<div class="empty">No helpers found.</div>';
+      void el.offsetWidth; el.classList.add('fade');
+      return;
+    }
+    const defAvatar = "{{ url_for('static', filename='assets/default_profile.jpg') }}";
+    el.innerHTML = list.map(h => {
+      const avg = Number(h.avg_rating || 0);
+      return `
+      <div class="card">
+        <img class="avatar" src="${h.profile_pic || defAvatar}" alt="${h.username}">
+        <div>
+          <h4>${h.username}</h4>
+          <div class="meta">${h.service_type || bt} • ${h.location || 'Unknown'} ${h.price ? '<span class="pill">₹'+Math.round(h.price)+'</span>' : ''}</div>
+          <div class="meta rating">${stars(avg)} <span style="margin-left:6px;">${avg.toFixed(1)}</span></div>
+          <a class="view-btn" href="/profile/${encodeURIComponent(h.username)}">View Profile</a>
+        </div>
+      </div>
+    `;
+    }).join('');
+    void el.offsetWidth; el.classList.add('fade');
+  }
+
+  function stars(n){
+    const x = Number(n||0); const s = Math.max(0, Math.min(5, Math.floor(x)));
+    return '★'.repeat(s);
+  }
+
+  async function applyFilters() {
+    const payload = {
+      business_type: bt,
+      service_type: selectedService,
+      location: document.getElementById('filterLocation').value,
+      min_rating: document.getElementById('filterRating').value,
+      price_min: document.getElementById('priceMin').value,
+      price_max: document.getElementById('priceMax').value,
+    };
+    const res = await fetch('/filter_helpers', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    if (!res.ok) return;
+    const data = await res.json();
+    const list = (data.helpers || []).slice().sort((a,b) => Number(b.avg_rating||0) - Number(a.avg_rating||0));
+    renderHelpers(list);
+  }
+
+  document.getElementById('filterLocation').addEventListener('change', applyFilters);
+  document.getElementById('filterRating').addEventListener('change', applyFilters);
+  document.getElementById('priceMin').addEventListener('input', debounce(applyFilters, 400));
+  document.getElementById('priceMax').addEventListener('input', debounce(applyFilters, 400));
+  const clearBtn = document.getElementById('clearFilters');
+  if (clearBtn) {
+    clearBtn.addEventListener('click', () => {
+      document.getElementById('filterLocation').value = '';
+      document.getElementById('filterRating').value = '';
+      document.getElementById('priceMin').value = '';
+      document.getElementById('priceMax').value = '';
+      selectedService = '';
+      document.querySelectorAll('#serviceTypes .svc-chip').forEach(c => c.classList.remove('selected'));
+      applyFilters();
+    });
+  }
+
+  // Service type chips selection
+  document.querySelectorAll('#serviceTypes .svc-chip').forEach(chip => {
+    chip.addEventListener('click', (e) => {
+      e.preventDefault();
+      document.querySelectorAll('#serviceTypes .svc-chip').forEach(c => c.classList.remove('selected'));
+      chip.classList.add('selected');
+      selectedService = chip.getAttribute('data-service');
+      applyFilters();
+    });
+  });
+
+  function debounce(fn, delay) {
+    let t; return (...args) => { clearTimeout(t); t = setTimeout(() => fn.apply(this, args), delay); };
+  }
+</script>
+{% endblock %}

@@ -1,0 +1,538 @@
+{% extends 'base.html' %}
+{% block title %}Home - Mr. Helper{% endblock %}
+{% block content %}
+
+<!-- Hero Section -->
+<div class="hero-section">
+  <div class="hero-content">
+    <h1 class="hero-title">Find Trusted Local Services in Minutes</h1>
+    <p class="hero-subtitle">Connect with {{ total_helpers }}+ verified helpers for all your home and business needs</p>
+    
+    <!-- Quick Order Button -->
+    <div class="hero-actions">
+      
+    </div>
+    <div class="hero-stats">
+      <div class="stat-item">
+        <span class="stat-number">{{ daily_bookings }}+</span>
+        <span class="stat-label">Bookings Today</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-number">{{ total_helpers }}+</span>
+        <span class="stat-label">Verified Helpers</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-number">4.8★</span>
+        <span class="stat-label">Average Rating</span>
+      </div>
+    </div>
+  </div>
+</div> 
+
+<!-- Enhanced Search Section -->
+<div class="search-container">
+  <form action="{{ url_for('search') }}" method="GET" onsubmit="hideSuggestions()">
+    <input
+      type="text"
+      id="search-box"
+      name="q"
+      placeholder="Search services..."
+      class="search-box"
+      autocomplete="off"
+      required
+    />
+    <button type="button" class="qr-btn" id="qr-toggle" aria-label="Scan QR">
+      <i class="fas fa-qrcode"></i>
+    </button>
+    <button type="submit" class="search-btn">
+      <img src="{{ url_for('static', filename='assets/search-icon.png') }}" alt="Search" />
+    </button>
+    <div id="search-suggestions" class="suggestions-box"></div>
+  </form>
+  
+</div>
+<!-- Inline QR Scanner and Results -->
+<div id="qr-panel" style="display:none; margin: 10px auto; max-width: 600px;">
+  <div id="qr-reader" style="width: 100%;"></div>
+  <div style="display:flex; gap:8px; margin-top:8px;">
+    <button type="button" id="qr-stop" class="qr-control" style="display:none;">Stop</button>
+    <button type="button" id="qr-restart" class="qr-control" style="display:none;">Restart</button>
+  </div>
+  <div id="qr-results" class="qr-results" style="margin-top:10px;"></div>
+  <div id="qr-error" class="qr-error" style="color:#b91c1c; margin-top:6px;"></div>
+  <hr style="margin: 14px 0;">
+</div>
+
+<div id="ad-slideshow" class="slideshow-container">
+  {% for ad in ads %}
+  <div class="mySlides fade">
+    <a href="{{ ad.ad_url if ad.ad_url else '#' }}" target="_blank">
+      <img src="{{ ad.image_url }}" alt="{{ ad.name }}" class="ad-image">
+    </a>
+  </div>
+  {% endfor %}
+
+</div>
+
+<!-- Dots -->
+<div class="dot-container">
+  {% for ad in ads %}
+  <span class="dot" data-slide="{{ loop.index }}"></span>
+  {% endfor %}
+</div>
+
+<!-- Recent Activity Section -->
+<div class="recent-activity">
+  <div class="activity-card">
+    <div class="activity-icon">📊</div>
+    <div class="activity-content">
+      <h3>{{ daily_bookings }}+ Services Booked Today</h3>
+      <p>Join thousands of satisfied customers who trust Mr. Helper</p>
+    </div>
+  </div>
+</div>
+
+<!-- Featured Helpers Section -->
+{% if featured_helpers %}
+<div class="featured-section">
+  <h3>⭐ Featured Helpers</h3>
+  <div class="helpers-grid">
+    {% for helper in featured_helpers[:4] %}
+    <div class="helper-card">
+      <img src="{{ helper.profile_pic or url_for('static', filename='assets/default_profile.jpg') }}" 
+           alt="{{ helper.username }}" class="helper-avatar">
+      <div class="helper-info">
+        <h4>{{ helper.username }}</h4>
+        <p class="helper-service">{{ helper.business_type }}</p>
+        <p class="helper-location">{{ helper.location or 'Location not specified' }}</p>
+        <div class="helper-rating">
+          <span class="stars">{{ "★" * (helper.avg_rating|int if helper.avg_rating else 0) }}</span>
+          <span class="rating-number">{{ "%.1f"|format(helper.avg_rating or 0) }}</span>
+        </div>
+        <a href="/profile/{{ helper.username }}" class="view-profile-btn">View Profile</a>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+<!-- Business Types Section -->
+<div class="services-section">
+  <h3 style="font-size: 1.5rem; margin-bottom: 1rem; text-align:center;">
+    Explore Business Types
+  </h3>
+
+  <style>
+    .business-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+    .business-card { background: #fff; border-radius: 14px; box-shadow: 0 6px 16px rgba(0,0,0,0.08); overflow: hidden; transition: transform .2s ease, box-shadow .2s ease; text-decoration: none; color: inherit; display:flex; flex-direction:column; }
+    .business-card:hover { transform: translateY(-4px); box-shadow: 0 10px 22px rgba(0,0,0,0.12); }
+    .business-thumb-wrap { position: relative; width: 100%; padding-top: 62.5%; background:#f3f4f6; }
+    .business-thumb { position:absolute; inset:0; width: 100%; height: 100%; object-fit: cover; }
+    .business-body { padding: 12px 14px; display:flex; align-items:center; justify-content:space-between; }
+    .business-name { font-weight: 700; font-size: 1rem; }
+    .business-meta { font-size: .85rem; color:#6b7280; }
+    @media (max-width: 1024px) { .business-grid { grid-template-columns: repeat(2, 1fr);} }
+    @media (max-width: 640px)  { .business-grid { grid-template-columns: 1fr; } }
+  </style>
+
+  <div class="business-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;">
+    {% for bt in business_types %}
+      <a class="business-card" href="{{ url_for('service_by_business', business_type=bt.name) }}">
+        <div class="business-thumb-wrap">
+          <img class="business-thumb" src="{{ bt.image or url_for('static', filename='assets/default_category.jpg') }}" alt="{{ bt.name }}">
+        </div>
+        <div class="business-body">
+          <div class="business-name">{{ bt.name }}</div>
+          {% set stats = service_stats.get(bt.name) %}
+          {% if stats %}
+          <div class="business-meta">{{ stats.helper_count }} helpers</div>
+          {% endif %}
+        </div>
+      </a>
+    {% endfor %}
+  </div>
+
+</div>
+
+<!-- How It Works Section -->
+<div class="how-it-works">
+  <h3>How It Works</h3>
+  <div class="steps-grid">
+    <div class="step-item">
+      <div class="step-number">1</div>
+      <div class="step-content">
+        <h4>Search & Select</h4>
+        <p>Find the service you need or scan a QR code to discover local helpers</p>
+      </div>
+    </div>
+    <div class="step-item">
+      <div class="step-number">2</div>
+      <div class="step-content">
+        <h4>Compare & Book</h4>
+        <p>Review profiles, ratings, and prices to choose your perfect helper</p>
+      </div>
+    </div>
+    <div class="step-item">
+      <div class="step-number">3</div>
+      <div class="step-content">
+        <h4>Get Service Done</h4>
+        <p>Relax while your verified helper completes the job professionally</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Emergency Services Section -->
+<div class="emergency-section">
+  <h3>🚨 Need Emergency Service?</h3>
+  <p>Get help within 30 minutes for urgent repairs</p>
+  <div class="emergency-buttons">
+    <a href="{{ url_for('place_order', service='Electrician') }}" class="emergency-btn electric">
+      <span class="btn-icon">⚡</span>
+      <span class="btn-text">Electrical Emergency</span>
+    </a>
+    <a href="{{ url_for('place_order', service='Plumbing') }}" class="emergency-btn plumbing">
+      <span class="btn-icon">🔧</span>
+      <span class="btn-text">Plumbing Emergency</span>
+    </a>
+  </div>
+</div>
+
+<!-- Why Choose Us Section -->
+<div class="why-choose-us">
+  <h3>Why Choose Mr. Helper?</h3>
+  <div class="benefits-grid">
+    <div class="benefit-item">
+      <div class="benefit-icon">🛡️</div>
+      <h4>Verified Helpers</h4>
+      <p>All our helpers are background-checked and verified for your safety</p>
+    </div>
+    <div class="benefit-item">
+      <div class="benefit-icon">💰</div>
+      <h4>Fair Pricing</h4>
+      <p>Transparent pricing with no hidden fees or surprise charges</p>
+    </div>
+    <div class="benefit-item">
+      <div class="benefit-icon">⚡</div>
+      <h4>Quick Service</h4>
+      <p>Get matched with helpers in minutes, not hours or days</p>
+    </div>
+    <div class="benefit-item">
+      <div class="benefit-icon">📱</div>
+      <h4>Easy Booking</h4>
+      <p>Simple booking process with real-time tracking and updates</p>
+    </div>
+  </div>
+</div>
+
+<!-- Floating Order Button -->
+<a href="{{ url_for('place_order', service='default_service') }}" class="floating-order-btn">
+  <span class="btn-icon">🛒</span>
+  <span class="btn-text">Quick Order</span>
+</a>
+<script>
+  const searchBox = document.getElementById("search-box");
+  const suggestionsBox = document.getElementById("search-suggestions");
+
+  const placeholders = [
+    "Search for Cleaning services...",
+    "Search for Electrician...",
+    "Search by username...",
+    "Search by location...",
+    "Search for Vehicle Repair...",
+    "Search for Painting services...",
+  ];
+
+  let currentPlaceholder = 0;
+  setInterval(() => {
+    searchBox.setAttribute("placeholder", placeholders[currentPlaceholder]);
+    currentPlaceholder = (currentPlaceholder + 1) % placeholders.length;
+  }, 2000);
+
+  // Function for category tag search
+  function searchFor(service) {
+    searchBox.value = service;
+    searchBox.form.submit();
+  }
+
+  // Loading state for search
+  function showSearchLoading() {
+    const searchBtn = document.querySelector('.search-btn');
+    searchBtn.innerHTML = '<div class="loading-spinner"></div>';
+    searchBtn.disabled = true;
+  }
+
+  // Hide loading state
+  function hideSearchLoading() {
+    const searchBtn = document.querySelector('.search-btn');
+    searchBtn.innerHTML = '<img src="{{ url_for("static", filename="assets/search-icon.png") }}" alt="Search" />';
+    searchBtn.disabled = false;
+  }
+
+  searchBox.addEventListener("input", function () {
+    const query = this.value.trim();
+
+    if (!query) {
+      hideSuggestions();
+      return;
+    }
+
+    // Show loading state
+    suggestionsBox.innerHTML = '<div class="suggestion-loading">Searching...</div>';
+    suggestionsBox.style.display = "block";
+
+    fetch(`/suggest?term=${encodeURIComponent(query)}`)
+      .then((res) => {
+        if (!res.ok) throw new Error('Search failed');
+        return res.json();
+      })
+      .then((suggestions) => {
+        suggestionsBox.innerHTML = "";
+
+        if (suggestions.length === 0) {
+          suggestionsBox.innerHTML = '<div class="suggestion-empty">No results found</div>';
+          return;
+        }
+
+        suggestions.forEach((item) => {
+          const div = document.createElement("div");
+          div.className = "suggestion-item";
+          div.textContent = item;
+          div.onclick = () => {
+            searchBox.value = item;
+            hideSuggestions();
+            showSearchLoading();
+            searchBox.form.submit();
+          };
+          suggestionsBox.appendChild(div);
+        });
+      })
+      .catch((error) => {
+        console.error('Search error:', error);
+        suggestionsBox.innerHTML = '<div class="suggestion-error">Search unavailable. Please try again.</div>';
+      });
+  });
+
+  // Add form submit handler for loading state
+  document.querySelector('form').addEventListener('submit', function(e) {
+    if (searchBox.value.trim()) {
+      showSearchLoading();
+    }
+  });
+
+  searchBox.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      hideSuggestions();
+    }
+  });
+
+  document.addEventListener("click", (e) => {
+    if (!suggestionsBox.contains(e.target) && e.target !== searchBox) {
+      hideSuggestions();
+    }
+  });
+
+  function hideSuggestions() {
+    suggestionsBox.innerHTML = "";
+    suggestionsBox.style.display = "none";
+  }
+</script>
+<!-- html5-qrcode CDN -->
+<script src="https://unpkg.com/html5-qrcode@2.3.10/minified/html5-qrcode.min.js"></script>
+<script>
+  // QR Scanner integration
+  const qrToggleBtn = document.getElementById('qr-toggle');
+  const qrPanel = document.getElementById('qr-panel');
+  const qrReaderDiv = document.getElementById('qr-reader');
+  const qrResults = document.getElementById('qr-results');
+  const qrError = document.getElementById('qr-error');
+  const qrStopBtn = document.getElementById('qr-stop');
+  const qrRestartBtn = document.getElementById('qr-restart');
+  const DEFAULT_AVATAR = "{{ url_for('static', filename='assets/default_profile.jpg') }}";
+  let html5QrCode = null;
+  let isRunning = false;
+
+  function renderHelpers(helpers) {
+    if (!helpers || helpers.length === 0) {
+      qrResults.innerHTML = '<div class="qr-empty">No helpers found for this code.</div>';
+      return;
+    }
+    qrResults.innerHTML = helpers.map(h => `
+      <div class="helper-card">
+        <img class="helper-avatar" src="${h.profile_pic || DEFAULT_AVATAR}" alt="${h.username}">
+        <div class="helper-info">
+          <div class="helper-name">${h.username}</div>
+          <div class="helper-meta">${h.business_type || ''} • ${h.location || ''}</div>
+          <div class="helper-meta">Phone: ${h.phone || 'N/A'} • Price: ${h.price || 'N/A'}</div>
+          <div class="helper-rating">⭐ ${(h.avg_rating != null ? h.avg_rating : 0)}</div>
+        </div>
+        <a class="helper-view" href="/profile/${h.username}">View</a>
+      </div>
+    `).join('');
+  }
+
+  async function onScanSuccess(decodedText) {
+    try {
+      qrError.textContent = '';
+      // Stop scanning once we have a code
+      if (html5QrCode && isRunning) {
+        await html5QrCode.stop();
+        isRunning = false;
+        qrStopBtn.style.display = 'none';
+        qrRestartBtn.style.display = 'inline-block';
+      }
+      // Fetch helper(s) by code
+      const res = await fetch(`/api/helper_by_code?code=${encodeURIComponent(decodedText)}`);
+      if (!res.ok) throw new Error('Lookup failed');
+      const data = await res.json();
+      renderHelpers(data.helpers || []);
+    } catch (e) {
+      qrError.textContent = 'Failed to process QR. Please try again.';
+    }
+  }
+
+  function onScanFailure(error) {
+    // Ignore continuous scan errors; keep silent to avoid noise.
+  }
+
+  async function startScanner() {
+    qrResults.innerHTML = '';
+    qrError.textContent = '';
+    if (!html5QrCode) {
+      html5QrCode = new Html5Qrcode('qr-reader');
+    }
+    const configs = { fps: 10, qrbox: { width: 250, height: 250 } };
+    try {
+      // Preflight: explicitly request permission to trigger prompt and capture clearer errors
+      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        let preflightStream = null;
+        try {
+          preflightStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } } });
+        } catch (permErr) {
+          const errName = permErr && (permErr.name || permErr.message) || 'Camera error';
+          const httpsWarning = location.protocol !== 'https:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1'
+            ? ' Camera requires HTTPS in browsers.'
+            : '';
+          qrError.textContent = errName + '.' + httpsWarning;
+          if (typeof showToast === 'function') {
+            showToast(errName + '.' + httpsWarning, 'warning', 'QR Scanner');
+          }
+          throw permErr;
+        } finally {
+          // Immediately release the camera from preflight
+          try {
+            if (preflightStream) preflightStream.getTracks().forEach(t => t.stop());
+          } catch (_) {}
+        }
+      }
+      // Try preferred environment camera first
+      await html5QrCode.start({ facingMode: 'environment' }, configs, onScanSuccess, onScanFailure);
+      isRunning = true;
+      qrStopBtn.style.display = 'inline-block';
+      qrRestartBtn.style.display = 'none';
+    } catch (e) {
+      // Fallback: try first available camera
+      try {
+        const cameras = await Html5Qrcode.getCameras();
+        if (cameras && cameras.length > 0) {
+          await html5QrCode.start(cameras[0].id, configs, onScanSuccess, onScanFailure);
+          isRunning = true;
+          qrStopBtn.style.display = 'inline-block';
+          qrRestartBtn.style.display = 'none';
+        } else {
+          throw new Error('No cameras found');
+        }
+      } catch (inner) {
+        const httpsWarning = location.protocol !== 'https:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1'
+          ? ' Note: Camera requires HTTPS in browsers.'
+          : '';
+        qrError.textContent = 'Camera access denied or unavailable.' + httpsWarning;
+        if (typeof showToast === 'function') {
+          showToast('Could not start the camera.' + httpsWarning, 'warning', 'QR Scanner');
+        }
+        console.error('QR start error:', e, inner);
+      }
+    }
+  }
+
+  qrToggleBtn.addEventListener('click', async () => {
+    const isVisible = qrPanel.style.display !== 'none';
+    qrPanel.style.display = isVisible ? 'none' : 'block';
+    if (!isVisible) {
+      await startScanner();
+    } else if (html5QrCode && isRunning) {
+      await html5QrCode.stop();
+      isRunning = false;
+    }
+  });
+
+  qrStopBtn.addEventListener('click', async () => {
+    if (html5QrCode && isRunning) {
+      await html5QrCode.stop();
+      isRunning = false;
+      qrStopBtn.style.display = 'none';
+      qrRestartBtn.style.display = 'inline-block';
+    }
+  });
+
+  qrRestartBtn.addEventListener('click', async () => {
+    await startScanner();
+  });
+
+  // Suppress global unhandledrejection toast for html5-qrcode internals
+  window.addEventListener('unhandledrejection', (e) => {
+    try {
+      const msg = String(e && e.reason || '');
+      if (msg.includes('Html5Qrcode') || msg.includes('NotAllowedError')) {
+        e.preventDefault();
+      }
+    } catch (_) {}
+  }, { capture: true });
+</script>
+<script>
+let slideIndex = 1;
+showSlides(slideIndex);
+
+// Next/previous controls
+function plusSlides(n) {
+  showSlides(slideIndex += n);
+}
+
+// Thumbnail controls
+function currentSlide(n) {
+  showSlides(slideIndex = n);
+}
+
+function showSlides(n) {
+  let i;
+  let slides = document.getElementsByClassName("mySlides");
+  let dots = document.getElementsByClassName("dot");
+
+  if (n > slides.length) { slideIndex = 1 }
+  if (n < 1) { slideIndex = slides.length }
+
+  for (i = 0; i < slides.length; i++) {
+    slides[i].style.display = "none";  
+  }
+
+  for (i = 0; i < dots.length; i++) {
+    dots[i].className = dots[i].className.replace(" active", "");
+  }
+
+  slides[slideIndex-1].style.display = "block";  
+  dots[slideIndex-1].className += " active";
+}
+
+// Auto slideshow (every 5s)
+setInterval(() => { plusSlides(1); }, 5000);
+
+// Attach click handlers to dots (no inline onclick for lint compatibility)
+document.querySelectorAll('.dot').forEach(dot => {
+  dot.addEventListener('click', () => {
+    const idx = Number(dot.getAttribute('data-slide')) || 1;
+    currentSlide(idx);
+  });
+});
+</script>  
+{% endblock %}
