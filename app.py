@@ -415,6 +415,33 @@ def home():
     with get_db_connection() as conn:
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
+        # New: Fetch 6 random business types for homepage cards
+        try:
+            cursor.execute(
+                """
+                SELECT id, name, image
+                FROM business_types
+                ORDER BY RANDOM()
+                LIMIT 6
+                """
+            )
+            random_business_types = cursor.fetchall()
+        except Exception:
+            # Fallback if table doesn't exist yet: derive from users
+            cursor.execute(
+                """
+                SELECT NULL::int as id, business_type as name, NULL::text as image
+                FROM (
+                    SELECT DISTINCT business_type
+                    FROM users
+                    WHERE account_type='business' AND business_type IS NOT NULL AND business_type <> ''
+                ) t
+                ORDER BY RANDOM()
+                LIMIT 6
+                """
+            )
+            random_business_types = cursor.fetchall()
+
         # Get services from database
         cursor.execute("SELECT DISTINCT business_type FROM users WHERE account_type='business'")
         services_from_db = [row['business_type'] for row in cursor.fetchall()]
@@ -505,6 +532,13 @@ def home():
     # Ensure we always have a valid asset filename to avoid 404 on '/static/assets/'
     random_service_images = {service: service_images.get(service, 'default_camera.jpg') for service in random_services}
 
+    # Ensure we always have 6 cards; if business types are empty, fallback to random services
+    if not random_business_types:
+        random_business_types = [
+            { 'id': None, 'name': svc, 'image': url_for('static', filename='assets/' + random_service_images.get(svc, 'default_category.jpg')) }
+            for svc in random_services
+        ]
+
     return render_template(
         'home.html',
         services=random_services,
@@ -516,7 +550,8 @@ def home():
         featured_helpers=featured_helpers,
         service_stats=service_stats,
         trending_services=trending_services,
-        service_descriptions=service_descriptions
+        service_descriptions=service_descriptions,
+        business_types=random_business_types
     )
 
 @app.route('/search', methods=['GET', 'POST'])
@@ -2437,24 +2472,173 @@ def firebase_messaging_sw():
 
 @app.route('/service/<service_name>')
 def service(service_name):
+    # Backward compatibility: redirect old route to the new service browser
+    return redirect(url_for('service_by_business', business_type=service_name))
+
+# New service browsing by business type with service types and helper profiles
+@app.route('/service/by/<business_type>')
+def service_by_business(business_type):
     with get_db_connection() as conn:
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        cursor.execute("""
+
+        # Service types for the selected business type
+        try:
+            cursor.execute(
+                """
+                SELECT st.id, st.name, st.icon
+                FROM service_types st
+                JOIN business_types bt ON bt.id = st.business_type_id
+                WHERE LOWER(bt.name) = LOWER(%s)
+                ORDER BY st.name
+                """,
+                (business_type,)
+            )
+            service_types = cursor.fetchall()
+        except Exception:
+            # Fallback if service_types table not present
+            service_types = []
+
+        # Fallback: derive service types from users if none found
+        if not service_types:
+            cursor.execute(
+                """
+                SELECT DISTINCT NULL::int as id, COALESCE(service_type,'') as name, NULL::text as icon
+                FROM users
+                WHERE account_type='business' AND LOWER(business_type)=LOWER(%s) AND COALESCE(service_type,'') <> ''
+                ORDER BY name
+                """,
+                (business_type,)
+            )
+            service_types = cursor.fetchall()
+
+        # Helpers under this business type (sorted highest rating first) - compute avg from feedback
+        cursor.execute(
+            """
             SELECT 
-                u.username,
-                u.location,
-                u.profile_pic,
-                u.price,
-                u.phone,
-                COALESCE(AVG(f.rating), 0) AS avg_rating
+              u.username,
+              u.business_type,
+              u.service_type,
+              u.location,
+              COALESCE(AVG(f.rating), 0) AS avg_rating,
+              u.profile_pic,
+              u.price_numeric AS price
             FROM users u
             LEFT JOIN feedback f ON u.id = f.to_user_id
-            WHERE u.account_type = 'business' AND u.business_type = %s
-            GROUP BY u.username, u.location, u.profile_pic, u.price, u.phone
-            ORDER BY avg_rating DESC
-        """, (service_name,))
-        businesses = cursor.fetchall()
-    return render_template('service.html', service_name=service_name, businesses=businesses)
+            WHERE u.account_type='business' AND LOWER(u.business_type) = LOWER(%s)
+            GROUP BY u.username, u.business_type, u.service_type, u.location, u.profile_pic, u.price_numeric
+            ORDER BY COALESCE(AVG(f.rating), 0) DESC
+            """,
+            (business_type,)
+        )
+        helpers = cursor.fetchall()
+
+        # Distinct locations for filters
+        cursor.execute(
+            """
+            SELECT DISTINCT location
+            FROM users
+            WHERE account_type='business' AND LOWER(business_type) = LOWER(%s)
+                  AND location IS NOT NULL AND location <> ''
+            ORDER BY location
+            """,
+            (business_type,)
+        )
+        locations = [r['location'] for r in cursor.fetchall()]
+
+    return render_template(
+        'service.html',
+        business_type=business_type,
+        service_types=service_types,
+        helpers=helpers,
+        locations=locations
+    )
+
+# AJAX filter endpoint for helper profiles
+@app.route('/filter_helpers', methods=['POST'])
+def filter_helpers():
+    data = request.get_json(silent=True) or request.form
+    business_type = (data.get('business_type') or '').strip()
+    service_type = (data.get('service_type') or '').strip()
+    location = (data.get('location') or '').strip()
+    min_rating = data.get('min_rating')
+    price_min = data.get('price_min')
+    price_max = data.get('price_max')
+    search = (data.get('search') or '').strip()
+
+    clauses = ["account_type='business'"]
+    params = []
+
+    if business_type:
+        clauses.append("LOWER(business_type) = LOWER(%s)")
+        params.append(business_type)
+    if service_type:
+        # Allow match either by exact name or id passed as string int
+        try:
+            _ = int(service_type)
+            clauses.append("service_type_id = %s")
+            params.append(int(service_type))
+        except Exception:
+            clauses.append("LOWER(service_type) = LOWER(%s)")
+            params.append(service_type)
+    if location:
+        clauses.append("LOWER(location) = LOWER(%s)")
+        params.append(location)
+    if min_rating not in (None, "", []):
+        try:
+            clauses.append("COALESCE(avg_rating, 0) >= %s")
+            params.append(float(min_rating))
+        except Exception:
+            pass
+    if price_min not in (None, "", []):
+        try:
+            clauses.append("COALESCE(price_numeric, 0) >= %s")
+            params.append(float(price_min))
+        except Exception:
+            pass
+    if price_max not in (None, "", []):
+        try:
+            clauses.append("COALESCE(price_numeric, 0) <= %s")
+            params.append(float(price_max))
+        except Exception:
+            pass
+    if search:
+        clauses.append("(username ILIKE %s OR COALESCE(bio,'') ILIKE %s)")
+        params.extend([f"%{search}%", f"%{search}%"])
+
+    where_sql = " AND ".join(clauses) if clauses else "TRUE"
+
+    with get_db_connection() as conn:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        base_sql = f"""
+            SELECT 
+              u.username,
+              u.business_type,
+              u.service_type,
+              u.location,
+              COALESCE(AVG(f.rating), 0) AS avg_rating,
+              u.profile_pic,
+              u.price_numeric AS price
+            FROM users u
+            LEFT JOIN feedback f ON u.id = f.to_user_id
+            WHERE {where_sql}
+            GROUP BY u.username, u.business_type, u.service_type, u.location, u.profile_pic, u.price_numeric
+        """
+
+        # Apply HAVING for min_rating if provided
+        having_clause = ""
+        having_params = []
+        if min_rating not in (None, "", []):
+            try:
+                having_clause = " HAVING COALESCE(AVG(f.rating), 0) >= %s"
+                having_params.append(float(min_rating))
+            except Exception:
+                pass
+
+        order_limit = " ORDER BY COALESCE(AVG(f.rating), 0) DESC LIMIT 200"
+        cur.execute(base_sql + having_clause + order_limit, tuple(params + having_params))
+        results = cur.fetchall()
+
+    return jsonify({"helpers": results})
 
 @app.route('/rate_comment/<username>', methods=['POST'])
 def rate_comment(username):
@@ -3674,7 +3858,7 @@ def verify_otp(order_id):
                 FROM orders
                 WHERE id = %s AND otp IS NOT NULL
             """, (order_id,))
-            otp_record = cursor.fetchone()
+        otp_record = cursor.fetchone()
         
         if not otp_record:
             return jsonify({'success': False, 'message': 'No OTP found for this order. Please generate one first.'}), 404
